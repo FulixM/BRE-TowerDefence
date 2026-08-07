@@ -25,6 +25,7 @@ class Main : KtxGame<KtxScreen>() {
 
 class FirstScreen : KtxScreen {
     private val enemyTexture = Texture("logo.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
+    private val towerTexture = Texture("img.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
 
     private val simulation = GameSimulation()
@@ -66,6 +67,13 @@ class FirstScreen : KtxScreen {
                     64f,
                     64f,
                 )
+                batch.draw(
+                    towerTexture,
+                    simulation.tower.x.toFloat(),
+                    simulation.tower.y.toFloat(),
+                    64f,
+                    64f,
+                )
             }
         }
     }
@@ -76,12 +84,19 @@ class FirstScreen : KtxScreen {
 
     override fun dispose() {
         enemyTexture.disposeSafely()
+        towerTexture.disposeSafely()
         batch.disposeSafely()
     }
 
     private fun updateDebugTitle() {
         Gdx.graphics.setTitle(
-            "Gegner: ${simulation.enemies.size}",
+            "Lebende Gegner: ${simulation.enemies.count { it.isAlive }}" +
+                "HP: ${
+                    simulation.enemies
+                        .firstOrNull { it.isAlive }
+                        ?.health
+                        ?.toString() ?: "keiner"
+                }",
         )
     }
 }

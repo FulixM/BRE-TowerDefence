@@ -19,6 +19,15 @@ class GameSimulation {
     private var nextEnemyId = 1L
     private var spawnedEnemyCount = 0
 
+    val tower =
+        Tower(
+            x = 300.0,
+            y = 250.0,
+            range = 140.0,
+            damage = 25.0,
+            attackIntervalTicks = 30L,
+        )
+
     fun update() {
         tick++
 
@@ -27,6 +36,10 @@ class GameSimulation {
                 enemy.update(STEP_SECONDS)
             }
         }
+        tower.update(
+            currentTick = tick,
+            enemies = mutableEnemies,
+        )
         if (tick % SPAWN_INTERVAL_TICKS == 0L && spawnedEnemyCount < MAX_ENEMIES) {
             spawnEnemy()
         }
