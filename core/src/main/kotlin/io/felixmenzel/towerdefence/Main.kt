@@ -1,6 +1,5 @@
 package io.felixmenzel.towerdefence
 
-import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.Texture.TextureFilter.Linear
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
@@ -24,7 +23,7 @@ class Main : KtxGame<KtxScreen>() {
 }
 
 class FirstScreen : KtxScreen {
-    private val image = Texture("logo.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
+    private val enemyTexture = Texture("logo.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
 
 
@@ -50,17 +49,23 @@ class FirstScreen : KtxScreen {
                 blue = 0.7f,
             )
 
-            val renderedEnemyX =
-                simulation.interpolatedEnemyX(alpha)
+            val enemy = simulation.enemy
+            val renderedX = enemy.interpolatedX(alpha)
+            val renderedY = enemy.interpolatedY(alpha)
 
             batch.use {
-                it.draw(
-                    image,
-                    renderedEnemyX.toFloat(),
-                    160f,
-                )
+                if (enemy.isAlive) {
+                    it.draw(
+                        enemyTexture,
+                        renderedX.toFloat(),
+                        renderedY.toFloat(),
+                        64f,
+                        64f,
+                    )
+                }
             }
         }
+
 
 
         override fun resume() {
@@ -68,7 +73,7 @@ class FirstScreen : KtxScreen {
         }
 
         override fun dispose() {
-            image.disposeSafely()
+            enemyTexture.disposeSafely()
             batch.disposeSafely()
         }
     }
