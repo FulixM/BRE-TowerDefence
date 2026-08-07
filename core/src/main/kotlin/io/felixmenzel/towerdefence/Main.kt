@@ -1,9 +1,11 @@
 package io.felixmenzel.towerdefence
 
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.graphics.Texture.TextureFilter.Linear
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import io.felixmenzel.towerdefence.simulation.FixedStepLoop
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import ktx.app.KtxGame
@@ -27,6 +29,7 @@ class FirstScreen : KtxScreen {
     private val enemyTexture = Texture("logo.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val towerTexture = Texture("img.png".toInternalFile(), true).apply { setFilter(Linear, Linear) }
     private val batch = SpriteBatch()
+    private val shapeRenderer = ShapeRenderer()
 
     private val simulation = GameSimulation()
     private val fixedStepLoop =
@@ -67,15 +70,28 @@ class FirstScreen : KtxScreen {
                     64f,
                     64f,
                 )
-                batch.draw(
-                    towerTexture,
-                    simulation.tower.x.toFloat(),
-                    simulation.tower.y.toFloat(),
-                    64f,
-                    64f,
-                )
             }
+
+            batch.draw(
+                towerTexture,
+                (simulation.tower.x - 32.0).toFloat(),
+                (simulation.tower.y - 32.0).toFloat(),
+                64f,
+                64f,
+            )
         }
+        shapeRenderer.projectionMatrix = batch.projectionMatrix
+
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line)
+        shapeRenderer.color = Color.WHITE
+
+        shapeRenderer.circle(
+            simulation.tower.x.toFloat(),
+            simulation.tower.y.toFloat(),
+            simulation.tower.range.toFloat(),
+            64,
+        )
+        shapeRenderer.end()
     }
 
     override fun resume() {
@@ -85,6 +101,7 @@ class FirstScreen : KtxScreen {
     override fun dispose() {
         enemyTexture.disposeSafely()
         towerTexture.disposeSafely()
+        shapeRenderer.disposeSafely()
         batch.disposeSafely()
     }
 
