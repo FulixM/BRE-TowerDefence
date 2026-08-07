@@ -41,11 +41,7 @@ class Enemy(
         health = (health - damage).coerceAtLeast(0.0)
     }
 
-    fun interpolatedX(alpha: Double): Double {
-        return previousX + (x - previousX) * alpha
-    }
+    fun interpolatedX(alpha: Double): Double = previousX + (x - previousX) * alpha
 
-    fun interpolatedY(alpha: Double): Double {
-        return previousY + (y - previousY) * alpha
-    }
+    fun interpolatedY(alpha: Double): Double = previousY + (y - previousY) * alpha
 }
