@@ -1,23 +1,42 @@
 package io.felixmenzel.towerdefence.simulation
 
+import kotlin.math.sqrt
+
 class Enemy(
     val id: Long,
-    startX: Double,
-    startY: Double,
+    private val path: List<Waypoint>,
     val speed: Double,
     val maxHealth: Double,
 ) {
-    var previousX: Double = startX
+    init {
+        require(path.isNotEmpty()) {
+            "Enemy path must contain at least one waypoint"
+        }
+
+        require(speed >= 0.0) {
+            "Enemy speed must not be negative"
+        }
+
+        require(maxHealth > 0.0) {
+            "Enemy maxHealth must be greater than zero"
+        }
+    }
+
+    var previousX: Double = path.first().x
         private set
 
-    var previousY: Double = startY
+    var previousY: Double = path.first().y
         private set
 
-    var x: Double = startX
+    var x: Double = path.first().x
         private set
 
-    var y: Double = startY
+    var y: Double = path.first().y
         private set
+
+    private var nextWaypointIndex = 1
+    val hasReachedGoal: Boolean
+        get() = nextWaypointIndex >= path.size
 
     var health: Double = maxHealth
         private set
@@ -29,8 +48,36 @@ class Enemy(
         previousX = x
         previousY = y
 
-        // Vorerst bewegt sich der Gegner nur nach rechts
-        x += speed * stepSeconds
+        var remainingMovement = speed * stepSeconds
+        while (remainingMovement > 0.0 && !hasReachedGoal) {
+            val target = path[nextWaypointIndex]
+
+            val deltaX = target.x - x
+            val deltaY = target.y - y
+            val distanceToTarget =
+                sqrt(
+                    deltaX * deltaX + deltaY * deltaY,
+                )
+
+            if (distanceToTarget <= remainingMovement) {
+                // Wegpunkt exakt erreichen
+                x = target.x
+                y = target.y
+
+                remainingMovement -= distanceToTarget
+                nextWaypointIndex++
+            } else {
+                // Nur einen Teil der Strecke zurücklegen
+                val directionX = deltaX / distanceToTarget
+                val directionY = deltaY / distanceToTarget
+
+                x += directionX * remainingMovement
+                y += directionY * remainingMovement
+
+                remainingMovement = 0.0
+            }
+            x += speed * stepSeconds
+        }
     }
 
     fun takeDamage(damage: Double) {

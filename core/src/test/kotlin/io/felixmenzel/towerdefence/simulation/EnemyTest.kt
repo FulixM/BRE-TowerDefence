@@ -10,8 +10,7 @@ class EnemyTest {
         val enemy =
             Enemy(
                 id = 1L,
-                startX = 0.0,
-                startY = 0.0,
+                path = listOf(Waypoint(x = 0.0, y = 0.0)),
                 speed = 60.0,
                 maxHealth = 100.0,
             )

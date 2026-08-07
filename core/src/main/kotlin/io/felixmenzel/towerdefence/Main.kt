@@ -52,7 +52,7 @@ class FirstScreen : KtxScreen {
         )
         batch.use { batch ->
             for (enemy in simulation.enemies) {
-                if (!enemy.isAlive) {
+                if (!enemy.isAlive || enemy.hasReachedGoal) {
                     continue
                 }
 
