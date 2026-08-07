@@ -38,20 +38,25 @@ class FirstScreen : KtxScreen {
             frameTimeSeconds = delta.toDouble(),
         )
 
-        renderWorld()
+        renderWorld(
+            alpha = fixedStepLoop.interpolationAlpha,
+        )
     }
 
-        private fun renderWorld() {
+        private fun renderWorld(alpha: Double) {
             clearScreen(
                 red = 0.7f,
                 green = 0.7f,
                 blue = 0.7f,
             )
 
+            val renderedEnemyX =
+                simulation.interpolatedEnemyX(alpha)
+
             batch.use {
                 it.draw(
                     image,
-                    simulation.enemyX.toFloat(),
+                    renderedEnemyX.toFloat(),
                     160f,
                 )
             }
