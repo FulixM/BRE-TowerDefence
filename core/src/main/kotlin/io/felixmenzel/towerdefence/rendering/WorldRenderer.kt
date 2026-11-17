@@ -3,7 +3,6 @@ package io.felixmenzel.towerdefence.rendering
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
@@ -24,10 +23,9 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Procedural artwork only: every visual effect follows the simulation clock, including pause. */
-class WorldRenderer : Disposable {
+class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private val shapes = ShapeRenderer()
     private val batch = SpriteBatch()
-    private val font = BitmapFont()
     private val viewportBuffer = BufferUtils.newIntBuffer(4)
     private val scissorBuffer = BufferUtils.newIntBuffer(4)
     private val projectedPoint = Vector3()
@@ -316,10 +314,10 @@ class WorldRenderer : Disposable {
     }
 
     private fun drawLabels(simulation: GameSimulation) {
-        font.data.setScale(0.9f)
+        var font = fonts.get(0.9f)
         font.color = MUTED
         font.draw(batch, "BRE / DEFENSE GRID", 32f, 490f)
-        font.data.setScale(0.75f)
+        font = fonts.get(0.75f)
         font.color = DIM
         font.draw(batch, "SECTOR 01    /    ZIGZAG CORRIDOR", 32f, 470f)
         font.draw(batch, "BUILD OFF THE ROUTE  /  PROTECT THE CORE", 32f, 28f)
@@ -401,7 +399,6 @@ class WorldRenderer : Disposable {
     }
 
     override fun dispose() {
-        font.dispose()
         batch.dispose()
         shapes.dispose()
     }

@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.PixmapIO
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
+import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.Main
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
@@ -45,6 +46,8 @@ object DesktopSmokeTest {
         private var frozenTick = 0L
         private var expectedRefund = 0
         private var screenshotWritten = false
+        private var normalCapHeight = 0f
+        private var normalNativeCapHeight = 0f
 
         override fun create() {
             game.create()
@@ -153,6 +156,26 @@ object DesktopSmokeTest {
                     check(simulation.towers.size == 2)
                     key(Input.Keys.SPACE)
                 }
+                95 -> {
+                    val fonts = privateField<ScreenFonts>(screen, "fonts")
+                    normalCapHeight = fonts.get().capHeight
+                    normalNativeCapHeight = normalCapHeight / fonts.get().data.scaleY
+                    check(Gdx.graphics.setWindowedMode(1800, 1080))
+                }
+                110 -> {
+                    val fonts = privateField<ScreenFonts>(screen, "fonts")
+                    val font = fonts.get()
+                    val density = viewport.screenWidth.toFloat() / DefenseScreen.WIDTH *
+                        Gdx.graphics.backBufferWidth / Gdx.graphics.width
+                    check(density >= 1.4f) { "Large-window text was not rendered at higher density" }
+                    check(abs(font.data.scaleY - 1f / density) < 0.001f)
+                    check(font.capHeight / font.data.scaleY > normalNativeCapHeight * 1.3f) {
+                        "Text atlas was enlarged instead of regenerated at native resolution"
+                    }
+                    check(abs(font.capHeight - normalCapHeight) < 1.5f) { "Logical text size changed on resize" }
+                    writeScreenshot("-scaled")
+                }
+                120 -> check(Gdx.graphics.setWindowedMode(1200, 900))
                 300 -> {
                     check(simulation.state == GameState.RUNNING)
                     check(simulation.enemies.isNotEmpty())
@@ -186,9 +209,10 @@ object DesktopSmokeTest {
             check(simulation.towers.isEmpty() && simulation.enemies.isEmpty() && simulation.shots.isEmpty())
         }
 
-        private fun writeScreenshot() {
+        private fun writeScreenshot(suffix: String = "") {
             val path = System.getProperty("bre.smoke.screenshot", "build/reports/desktop-smoke.png")
-            val file = Gdx.files.absolute(java.io.File(path).absolutePath)
+            val target = if (suffix.isEmpty()) path else path.removeSuffix(".png") + suffix + ".png"
+            val file = Gdx.files.absolute(java.io.File(target).absolutePath)
             file.parent().mkdirs()
             val pixels = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
             try {

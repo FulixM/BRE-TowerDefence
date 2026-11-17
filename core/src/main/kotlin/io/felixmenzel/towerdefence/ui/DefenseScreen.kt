@@ -6,7 +6,6 @@ import com.badlogic.gdx.InputAdapter
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
 import com.badlogic.gdx.graphics.OrthographicCamera
-import com.badlogic.gdx.graphics.g2d.BitmapFont
 import com.badlogic.gdx.graphics.g2d.GlyphLayout
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
@@ -15,6 +14,7 @@ import com.badlogic.gdx.math.Rectangle
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.viewport.FitViewport
+import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.simulation.ActionResult
 import io.felixmenzel.towerdefence.simulation.FixedStepLoop
@@ -29,10 +29,10 @@ import kotlin.math.roundToInt
 class DefenseScreen : KtxScreen {
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(WIDTH, HEIGHT, camera)
-    private val renderer = WorldRenderer()
+    private val fonts = ScreenFonts()
+    private val renderer = WorldRenderer(fonts)
     private val batch = SpriteBatch()
     private val shapes = ShapeRenderer()
-    private val font = BitmapFont()
     private val glyph = GlyphLayout()
     private val worldProjection = Matrix4()
     private val pointer = Vector2()
@@ -127,6 +127,8 @@ class DefenseScreen : KtxScreen {
             if (doubleSpeed) loop.advance(delta.toDouble())
         }
         viewport.apply()
+        fonts.updateDensity(viewport.screenWidth.toFloat() / WIDTH *
+            Gdx.graphics.backBufferWidth.toFloat() / Gdx.graphics.width)
         Gdx.gl.glClearColor(BACKGROUND.r, BACKGROUND.g, BACKGROUND.b, 1f)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
         val cursor = uiPoint(Gdx.input.x, Gdx.input.y)
@@ -135,8 +137,8 @@ class DefenseScreen : KtxScreen {
         worldProjection.set(camera.combined).translate(0f, BOARD_Y, 0f)
         renderer.render(
             simulation, loop.interpolationAlpha, worldProjection, selectedTower(), buildType,
-            if (onBoard) cursor!!.x.toDouble() else null,
-            if (onBoard) (cursor!!.y - BOARD_Y).toDouble() else null,
+            if (onBoard) cursor.x.toDouble() else null,
+            if (onBoard) (cursor.y - BOARD_Y).toDouble() else null,
         )
         drawInterface(cursor)
     }
@@ -285,20 +287,19 @@ class DefenseScreen : KtxScreen {
     private fun drawText(firstButton: Int, lastButton: Int) {
         batch.begin()
         for (label in labels) {
-            font.data.setScale(label.scale)
+            val font = fonts.get(label.scale)
             font.color = label.color
-            if (label.width > 0f) font.draw(batch, label.text, label.x, label.y, label.width, Align.left, true)
-            else font.draw(batch, label.text, label.x, label.y)
+            if (label.width > 0f) font.draw(batch, label.text, fonts.snap(label.x), fonts.snap(label.y), label.width, Align.left, true)
+            else font.draw(batch, label.text, fonts.snap(label.x), fonts.snap(label.y))
         }
         for (index in firstButton until lastButton) {
             val button = buttons[index]
-            font.data.setScale(button.scale)
+            val font = fonts.get(button.scale)
             font.color = if (button.enabled) WHITE else MUTED
             glyph.setText(font, button.label)
-            font.draw(batch, button.label, button.bounds.x + (button.bounds.width - glyph.width) / 2f,
-                button.bounds.y + (button.bounds.height + glyph.height) / 2f)
+            font.draw(batch, button.label, fonts.snap(button.bounds.x + (button.bounds.width - glyph.width) / 2f),
+                fonts.snap(button.bounds.y + (button.bounds.height + glyph.height) / 2f))
         }
-        font.data.setScale(1f)
         batch.end()
     }
 
@@ -414,7 +415,7 @@ class DefenseScreen : KtxScreen {
         renderer.dispose()
         batch.dispose()
         shapes.dispose()
-        font.dispose()
+        fonts.dispose()
     }
 
     private data class Label(val text: String, val x: Float, val y: Float, val scale: Float, val color: Color, val width: Float)

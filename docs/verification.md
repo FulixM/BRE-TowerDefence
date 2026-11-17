@@ -41,3 +41,9 @@ The environment supports six simultaneous subagents plus the lead, so the sevent
 3. A second authored map and an explicit difficulty selector.
 4. Original sound effects with volume controls.
 5. Visible selectable targeting priorities and later progression, once the core mission is validated.
+
+## Text clarity follow-up
+
+Replaced fractional scaling of the default low-resolution bitmap font with bundled DejaVu Sans (Latin subset, including license). FreeType, already included in the project, generates text atlases for each required physical pixel size. Density combines the fitted viewport scale with the actual framebuffer/window ratio; density changes dispose the old atlas cache and regenerate it. UI text baselines are aligned to physical pixels. The desktop launcher explicitly uses logical HiDPI coordinates.
+
+Executed `./gradlew build test lwjgl3:smokeTest`: build and all 35 simulation tests passed. The rendered smoke test additionally resizes from 1200 to 1800 pixels wide, checks that native glyph resolution increases while logical text size stays stable, then returns to the original size. Both screenshots were visually inspected. The scaled screenshot is uploaded by CI together with the regular preview. This is a framebuffer/resize regression check; actual Retina/HiDPI hardware testing remains outstanding.
