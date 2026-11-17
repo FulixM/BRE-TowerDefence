@@ -31,25 +31,6 @@ configure(subprojects) {
   java.sourceCompatibility = 21
   java.targetCompatibility = 21
 
-  // From https://lyze.dev/2021/04/29/libGDX-Internal-Assets-List/
-  // The article can be helpful when using assets.txt in your project.
-  tasks.register('generateAssetList') {
-    inputs.dir("${project.rootDir}/assets/")
-    // projectFolder/assets
-    File assetsFolder = new File("${project.rootDir}/assets/")
-    // projectFolder/assets/assets.txt
-    File assetsFile = new File(assetsFolder, "assets.txt")
-    // delete that file in case we've already created it
-    assetsFile.delete()
-
-    // iterate through all files inside that folder
-    // convert it to a relative path
-    // and append it to the file assets.txt
-    fileTree(assetsFolder).collect { assetsFolder.relativePath(it) }.sort().each {
-      assetsFile.append(it + "\n")
-    }
-  }
-  processResources.dependsOn 'generateAssetList'
 
   compileJava {
     options.incremental = true
@@ -61,7 +42,7 @@ configure(subprojects) {
 
 subprojects {
   version = "$projectVersion"
-  ext.appName = 'YourProjectName'
+  ext.appName = 'BRE-TowerDefence'
   repositories {
     mavenCentral()
     // You may want to remove the following line if you have errors downloading dependencies.
@@ -71,4 +52,17 @@ subprojects {
   }
 }
 
-eclipse.project.name = 'YourProjectName' + '-parent'
+eclipse.project.name = 'BRE-TowerDefence-parent'
+
+// Generate once, outside the source assets directory, including for parallel builds.
+tasks.register('generateAssetList') {
+  def assetFiles = fileTree('assets') { exclude 'assets.txt' }
+  def assetList = layout.buildDirectory.file('generated/assets/assets.txt')
+  inputs.files(assetFiles)
+  outputs.file(assetList)
+  doLast {
+    def output = assetList.get().asFile
+    output.parentFile.mkdirs()
+    output.text = assetFiles.collect { file('assets').toPath().relativize(it.toPath()).toString().replace('\\', '/') }.sort().join('\n') + '\n'
+  }
+}
