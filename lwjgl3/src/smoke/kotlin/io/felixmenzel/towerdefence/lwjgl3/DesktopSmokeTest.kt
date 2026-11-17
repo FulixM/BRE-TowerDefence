@@ -5,6 +5,9 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.Input
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3Application
 import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration
+import com.badlogic.gdx.graphics.GL20
+import com.badlogic.gdx.graphics.glutils.FrameBuffer
+import com.badlogic.gdx.utils.BufferUtils
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.PixmapIO
 import com.badlogic.gdx.math.Vector2
@@ -29,6 +32,8 @@ object DesktopSmokeTest {
         val config = Lwjgl3ApplicationConfiguration().apply {
             setTitle("BRE Tower Defence / Desktop smoke")
             setWindowedMode(1200, 720)
+            setHdpiMode(com.badlogic.gdx.graphics.glutils.HdpiMode.Logical)
+            setSamples(4)
             useVsync(false)
             setForegroundFPS(60)
             disableAudio(true)
@@ -67,6 +72,20 @@ object DesktopSmokeTest {
             check(frame <= 400) { "Smoke test exceeded frame budget" }
             when (frame) {
                 1 -> {
+                    val samples = BufferUtils.newIntBuffer(1)
+                    Gdx.gl.glGetIntegerv(GL20.GL_SAMPLES, samples)
+                    if (samples.get(0) >= 4) {
+                        println("Geometry antialiasing active: ${samples.get(0)} samples")
+                    } else {
+                        val renderer = privateField<Any>(screen, "renderer")
+                        val target = privateField<FrameBuffer?>(renderer, "fallbackBuffer")
+                        val nativeWidth = viewport.screenWidth.toFloat() / DefenseScreen.WIDTH *
+                            Gdx.graphics.backBufferWidth / Gdx.graphics.width * DefenseScreen.BOARD_WIDTH
+                        check(target != null && target.width >= nativeWidth * 1.5f) {
+                            "Geometry lacks both multisampling and supersampling"
+                        }
+                        println("Geometry antialiasing active: supersampled framebuffer ${target.width}x${target.height}")
+                    }
                     check(simulation.gold == GameSimulation.START_GOLD)
                     check(simulation.state == GameState.PREPARING)
                     key(Input.Keys.NUM_1)
