@@ -18,8 +18,21 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build and run simulation tests
-        run: ./gradlew build test --console=plain
+      - name: Build with a legacy local asset index and run simulation tests
+        run: |
+          printf 'legacy-asset-index\n' > assets/assets.txt
+          ./gradlew clean build test --console=plain
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          from zipfile import ZipFile
+          expected = Path('build/generated/assets/assets.txt').read_bytes()
+          assert expected != Path('assets/assets.txt').read_bytes()
+          assert Path('lwjgl3/build/resources/main/assets.txt').read_bytes() == expected
+          with ZipFile(next(Path('lwjgl3/build/libs').glob('*.jar'))) as archive:
+              assert archive.namelist().count('assets.txt') == 1
+              assert archive.read('assets.txt') == expected
+              assert {'img.png', 'logo.png'} <= set(archive.namelist())
+          PYTHON
       - name: Install virtual desktop
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0
       - name: Exercise rendered desktop controls
