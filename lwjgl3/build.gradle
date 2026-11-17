@@ -19,7 +19,14 @@ apply plugin: 'org.jetbrains.kotlin.jvm'
 
 import io.github.fourlastor.construo.Target
 
-sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
+sourceSets.main.resources.srcDirs += [ rootProject.layout.buildDirectory.dir('generated/assets') ]
+processResources {
+  // Earlier builds generated this ignored index inside assets/. Only package the new index.
+  from(rootProject.file('assets')) {
+    exclude 'assets.txt'
+  }
+  dependsOn rootProject.tasks.named('generateAssetList')
+}
 application.mainClass = 'io.felixmenzel.towerdefence.lwjgl3.Lwjgl3Launcher'
 application.applicationName = appName
 eclipse.project.name = appName + '-lwjgl3'
@@ -208,4 +215,24 @@ tasks.withType(JavaExec.class).configureEach {
 
 if(enableGraalNative == 'true') {
   apply from: file("nativeimage.gradle")
+}
+
+sourceSets {
+  smoke {
+    compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+    runtimeClasspath += output + compileClasspath + sourceSets.main.runtimeClasspath
+  }
+}
+
+// Exercises the real OpenGL renderer and input path; requires a display (or xvfb-run).
+tasks.register('smokeTest', JavaExec) {
+  group = 'verification'
+  description = 'Run scripted desktop interactions and capture a rendered screenshot.'
+  dependsOn smokeClasses
+  classpath = sourceSets.smoke.runtimeClasspath
+  mainClass = 'io.felixmenzel.towerdefence.lwjgl3.DesktopSmokeTest'
+  workingDir = rootProject.file('assets')
+  systemProperty 'bre.smoke.screenshot', layout.buildDirectory.file('reports/desktop-smoke.png').get().asFile.absolutePath
+  jvmArgs '--enable-native-access=ALL-UNNAMED'
+  if (os.contains('mac')) jvmArgs '-XstartOnFirstThread'
 }

@@ -2,32 +2,22 @@ package io.felixmenzel.towerdefence.simulation
 
 import kotlin.math.min
 
-
-class FixedStepLoop(
-    private val updateSimulation: () -> Unit,
-) {
+/** Fixed simulation updates with bounded catch-up and independent render interpolation. */
+class FixedStepLoop(private val updateSimulation: () -> Unit) {
     private var accumulatorSeconds = 0.0
-
-    var interpolationAlpha: Double = 0.0
+    var interpolationAlpha = 0.0
         private set
 
     fun advance(frameTimeSeconds: Double): Int {
-        // Nach einem Breakpoint oder verschobenen Fenster nicht plötzlich
-        // mehrere Sekunden Simulation nachholen.
-        val acceptedFrameTime = min(frameTimeSeconds, MAX_FRAME_TIME_SECONDS)
-        accumulatorSeconds += acceptedFrameTime
-
+        require(frameTimeSeconds.isFinite() && frameTimeSeconds >= 0.0)
+        accumulatorSeconds += min(frameTimeSeconds, MAX_FRAME_TIME_SECONDS)
         var updates = 0
-
-        while (accumulatorSeconds >= GameSimulation.STEP_SECONDS) {
+        while (accumulatorSeconds + 1e-12 >= GameSimulation.STEP_SECONDS) {
             updateSimulation()
-            accumulatorSeconds -= GameSimulation.STEP_SECONDS
+            accumulatorSeconds = (accumulatorSeconds - GameSimulation.STEP_SECONDS).coerceAtLeast(0.0)
             updates++
         }
-
-        interpolationAlpha =
-            accumulatorSeconds / GameSimulation.STEP_SECONDS
-
+        interpolationAlpha = accumulatorSeconds / GameSimulation.STEP_SECONDS
         return updates
     }
 

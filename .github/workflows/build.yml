@@ -1,0 +1,48 @@
+name: Build and playability checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build with a legacy local asset index and run simulation tests
+        run: |
+          printf 'legacy-asset-index\n' > assets/assets.txt
+          ./gradlew clean build test --console=plain
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          from zipfile import ZipFile
+          expected = Path('build/generated/assets/assets.txt').read_bytes()
+          assert expected != Path('assets/assets.txt').read_bytes()
+          assert Path('lwjgl3/build/resources/main/assets.txt').read_bytes() == expected
+          with ZipFile(next(Path('lwjgl3/build/libs').glob('*.jar'))) as archive:
+              assert archive.namelist().count('assets.txt') == 1
+              assert archive.read('assets.txt') == expected
+              assert {'img.png', 'logo.png'} <= set(archive.namelist())
+          PYTHON
+      - name: Install virtual desktop
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0
+      - name: Exercise rendered desktop controls
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: xvfb-run -a ./gradlew lwjgl3:smokeTest --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports-and-desktop-preview
+          path: |
+            core/build/reports/tests/test
+            lwjgl3/build/reports/desktop-smoke.png
