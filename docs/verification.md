@@ -41,3 +41,15 @@ The environment supports six simultaneous subagents plus the lead, so the sevent
 3. A second authored map and an explicit difficulty selector.
 4. Original sound effects with volume controls.
 5. Visible selectable targeting priorities and later progression, once the core mission is validated.
+
+## Text clarity follow-up
+
+Replaced fractional scaling of the default low-resolution bitmap font with bundled DejaVu Sans (Latin subset, including license). FreeType, already included in the project, generates text atlases for each required physical pixel size. Density combines the fitted viewport scale with the actual framebuffer/window ratio; density changes dispose the old atlas cache and regenerate it. UI text baselines are aligned to physical pixels. The desktop launcher explicitly uses logical HiDPI coordinates.
+
+Executed `./gradlew build test lwjgl3:smokeTest`: build and all 35 simulation tests passed. The rendered smoke test additionally resizes from 1200 to 1800 pixels wide, checks that native glyph resolution increases while logical text size stays stable, then returns to the original size. Both screenshots were visually inspected. The scaled screenshot is uploaded by CI together with the regular preview. This is a framebuffer/resize regression check; actual Retina/HiDPI hardware testing remains outstanding.
+
+## Geometry clarity follow-up
+
+The desktop launcher and smoke test request four-sample MSAA. If the actual window framebuffer supplies fewer than four samples, the renderer draws only battlefield geometry into a 2x framebuffer and filters it back to the native viewport; labels and HUD text are drawn natively afterwards. The fallback is resized with the viewport, bounded to the GPU texture limit and 4096 pixels per dimension, and disposed with the renderer. Rings use a closed annular mesh and curve subdivision targets a 0.2-physical-pixel chord error.
+
+Executed `./gradlew build test lwjgl3:smokeTest` successfully, with all 35 rules tests passing. The software Xorg driver reported zero multisamples, so the real desktop check verified the fallback framebuffer (1800x1120 for a 900x560 native board), input, resizing and native text resolution. Screenshots at 1200 and 1800 pixels wide were inspected; turret and gate outlines are visibly smoother. An independent QA review found no blocking state-restoration, alpha or resource-management issues. Hardware MSAA availability remains driver-dependent; the fallback covers its absence.

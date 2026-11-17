@@ -3,7 +3,10 @@ package io.felixmenzel.towerdefence.rendering
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.GL20
-import com.badlogic.gdx.graphics.g2d.BitmapFont
+import com.badlogic.gdx.graphics.Pixmap
+import com.badlogic.gdx.graphics.Texture.TextureFilter
+import com.badlogic.gdx.graphics.g2d.TextureRegion
+import com.badlogic.gdx.graphics.glutils.FrameBuffer
 import com.badlogic.gdx.graphics.g2d.SpriteBatch
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
 import com.badlogic.gdx.math.Matrix4
@@ -16,6 +19,8 @@ import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
+import kotlin.math.abs
+import kotlin.math.acos
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -24,13 +29,18 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** Procedural artwork only: every visual effect follows the simulation clock, including pause. */
-class WorldRenderer : Disposable {
+class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private val shapes = ShapeRenderer()
     private val batch = SpriteBatch()
-    private val font = BitmapFont()
     private val viewportBuffer = BufferUtils.newIntBuffer(4)
     private val scissorBuffer = BufferUtils.newIntBuffer(4)
     private val projectedPoint = Vector3()
+    private var pixelsPerUnit = 1f
+    private val boardClipBuffer = BufferUtils.newIntBuffer(4)
+    private val sampleBuffer = BufferUtils.newIntBuffer(1)
+    private val boardProjection = Matrix4().setToOrtho2D(0f, 0f, WIDTH, HEIGHT)
+    private var fallbackBuffer: FrameBuffer? = null
+    private var fallbackRegion: TextureRegion? = null
 
     fun render(
         simulation: GameSimulation,
@@ -41,12 +51,66 @@ class WorldRenderer : Disposable {
         cursorX: Double? = null,
         cursorY: Double? = null,
     ) {
-        shapes.projectionMatrix = projection
         batch.projectionMatrix = projection
         val hadBlend = Gdx.gl.glIsEnabled(GL20.GL_BLEND)
         val hadScissor = beginBoardClip(projection)
+        val nativeDensity = abs(projection.`val`[Matrix4.M00]) * viewportBuffer.get(2) / 2f
         Gdx.gl.glEnable(GL20.GL_BLEND)
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA)
+        Gdx.gl.glBlendFuncSeparate(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA,
+            GL20.GL_ONE, GL20.GL_ONE_MINUS_SRC_ALPHA)
+        sampleBuffer.clear()
+        Gdx.gl.glGetIntegerv(GL20.GL_SAMPLES, sampleBuffer)
+        val supersample = sampleBuffer.get(0) < 4
+        if (supersample) {
+            val target = supersampledBoard(nativeDensity)
+            boardClipBuffer.clear()
+            Gdx.gl.glGetIntegerv(GL20.GL_SCISSOR_BOX, boardClipBuffer)
+            Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST)
+            target.begin()
+            Gdx.gl.glClearColor(0f, 0f, 0f, 0f)
+            Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
+            pixelsPerUnit = target.width / WIDTH
+            shapes.projectionMatrix = boardProjection
+        } else {
+            pixelsPerUnit = nativeDensity
+            shapes.projectionMatrix = projection
+        }
+        drawGeometry(simulation, alpha, selectedTower, buildType, cursorX, cursorY)
+        if (supersample) {
+            fallbackBuffer!!.end()
+            Gdx.gl.glViewport(viewportBuffer.get(0), viewportBuffer.get(1), viewportBuffer.get(2), viewportBuffer.get(3))
+            Gdx.gl.glEnable(GL20.GL_SCISSOR_TEST)
+            Gdx.gl.glScissor(boardClipBuffer.get(0), boardClipBuffer.get(1), boardClipBuffer.get(2), boardClipBuffer.get(3))
+        }
+        batch.begin()
+        if (supersample) batch.draw(fallbackRegion!!, 0f, 0f, WIDTH, HEIGHT)
+        // Text stays in the native framebuffer, including on the supersampling fallback.
+        drawLabels(simulation)
+        batch.end()
+        if (hadBlend) Gdx.gl.glEnable(GL20.GL_BLEND) else Gdx.gl.glDisable(GL20.GL_BLEND)
+        endBoardClip(hadScissor)
+    }
+
+    /** Use 2x supersampling when the window system cannot supply a multisampled buffer. */
+    private fun supersampledBoard(nativeDensity: Float): FrameBuffer {
+        sampleBuffer.clear()
+        Gdx.gl.glGetIntegerv(GL20.GL_MAX_TEXTURE_SIZE, sampleBuffer)
+        val limit = minOf(sampleBuffer.get(0), 4096).toFloat()
+        val density = minOf(nativeDensity * 2f, limit / WIDTH, limit / HEIGHT)
+        val width = ceil(WIDTH * density).toInt().coerceAtLeast(1)
+        val height = ceil(HEIGHT * density).toInt().coerceAtLeast(1)
+        val current = fallbackBuffer
+        if (current != null && current.width == width && current.height == height) return current
+        current?.dispose()
+        val target = FrameBuffer(Pixmap.Format.RGBA8888, width, height, false)
+        target.colorBufferTexture.setFilter(TextureFilter.Linear, TextureFilter.Linear)
+        fallbackBuffer = target
+        fallbackRegion = TextureRegion(target.colorBufferTexture).apply { flip(false, true) }
+        return target
+    }
+
+    private fun drawGeometry(simulation: GameSimulation, alpha: Double, selectedTower: Tower?,
+        buildType: TowerType?, cursorX: Double?, cursorY: Double?) {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         drawBoard(simulation)
         selectedTower?.let { drawRange(it.x.toFloat(), it.y.toFloat(), it.range.toFloat(), CYAN) }
@@ -57,11 +121,6 @@ class WorldRenderer : Disposable {
             drawPreview(simulation, buildType, cursorX.toFloat(), cursorY.toFloat())
         }
         shapes.end()
-        batch.begin()
-        drawLabels(simulation)
-        batch.end()
-        if (hadBlend) Gdx.gl.glEnable(GL20.GL_BLEND) else Gdx.gl.glDisable(GL20.GL_BLEND)
-        endBoardClip(hadScissor)
     }
 
     private fun drawBoard(simulation: GameSimulation) {
@@ -119,7 +178,7 @@ class WorldRenderer : Disposable {
 
     private fun drawPath(simulation: GameSimulation, width: Float, color: Color) {
         shapes.color = color
-        simulation.path.forEach { shapes.circle(it.x.toFloat(), it.y.toFloat(), width / 2f, 24) }
+        simulation.path.forEach { circle(it.x.toFloat(), it.y.toFloat(), width / 2f) }
         for (index in 0 until simulation.path.lastIndex) {
             val start = simulation.path[index]
             val end = simulation.path[index + 1]
@@ -129,9 +188,9 @@ class WorldRenderer : Disposable {
 
     private fun drawGate(x: Float, y: Float, color: Color, core: Boolean, tick: Long) {
         shapes.color = SHADOW
-        shapes.circle(x + 2f, y - 3f, 28f, 24)
+        circle(x + 2f, y - 3f, 28f)
         shapes.color = PANEL
-        shapes.circle(x, y, 27f, 24)
+        circle(x, y, 27f)
         ring(x, y, 26f, 2f, color)
         shapes.color = color
         if (core) {
@@ -153,7 +212,7 @@ class WorldRenderer : Disposable {
 
     private fun drawRange(x: Float, y: Float, range: Float, color: Color) {
         shapes.setColor(color.r, color.g, color.b, 0.055f)
-        shapes.circle(x, y, range, 80)
+        circle(x, y, range)
         ring(x, y, range, 1.3f, color, 0.55f)
     }
 
@@ -162,7 +221,7 @@ class WorldRenderer : Disposable {
         val y = tower.y.toFloat()
         val color = towerColor(tower.type)
         shapes.color = SHADOW
-        shapes.circle(x + 2f, y - 4f, 23f, 24)
+        circle(x + 2f, y - 4f, 23f)
         shapes.color = BORDER
         hexagon(x, y, 22f)
         shapes.color = PANEL
@@ -199,10 +258,10 @@ class WorldRenderer : Disposable {
         shapes.color = color
         when (type) {
             TowerType.RAPID -> {
-                shapes.circle(x, y, 9f, 20)
+                circle(x, y, 9f)
                 shapes.rectLine(x, y, x + dx * 23f, y + dy * 23f, 6f)
                 shapes.color = PANEL
-                shapes.circle(x, y, 4f, 16)
+                circle(x, y, 4f)
             }
             TowerType.CANNON -> {
                 hexagon(x, y, 11f)
@@ -239,7 +298,7 @@ class WorldRenderer : Disposable {
         val radius = when (enemy.type) { EnemyType.ARMORED -> 13f; EnemyType.FAST -> 9f; EnemyType.NORMAL -> 11f }
         val color = when (enemy.type) { EnemyType.ARMORED -> ORANGE; EnemyType.FAST -> MAGENTA; EnemyType.NORMAL -> CORAL }
         shapes.color = SHADOW
-        shapes.circle(x + 2f, y - 3f, radius + 2f, 16)
+        circle(x + 2f, y - 3f, radius + 2f)
         shapes.color = color
         when (enemy.type) {
             EnemyType.ARMORED -> {
@@ -282,7 +341,7 @@ class WorldRenderer : Disposable {
             shapes.rectLine(fromX, fromY, toX, toY, if (shot.type == TowerType.CANNON) 9f else 5f)
             shapes.setColor(color.r, color.g, color.b, opacity)
             shapes.rectLine(fromX, fromY, toX, toY, if (shot.type == TowerType.CANNON) 3f else 1.6f)
-            shapes.circle(fromX, fromY, 4f * opacity, 12)
+            circle(fromX, fromY, 4f * opacity)
             val radius = when (shot.type) {
                 TowerType.CANNON -> 8f + age * 42f
                 TowerType.FROST -> 5f + age * 17f
@@ -316,10 +375,10 @@ class WorldRenderer : Disposable {
     }
 
     private fun drawLabels(simulation: GameSimulation) {
-        font.data.setScale(0.9f)
+        var font = fonts.get(0.9f)
         font.color = MUTED
         font.draw(batch, "BRE / DEFENSE GRID", 32f, 490f)
-        font.data.setScale(0.75f)
+        font = fonts.get(0.75f)
         font.color = DIM
         font.draw(batch, "SECTOR 01    /    ZIGZAG CORRIDOR", 32f, 470f)
         font.draw(batch, "BUILD OFF THE ROUTE  /  PROTECT THE CORE", 32f, 28f)
@@ -371,13 +430,34 @@ class WorldRenderer : Disposable {
         }
     }
 
+    /** Target a 0.2-pixel chord error with bounded geometry cost. */
+    private fun curveSegments(radius: Float): Int {
+        val pixelRadius = (radius * pixelsPerUnit).coerceAtLeast(1f)
+        return ceil(kotlin.math.PI / acos((1.0 - 0.2 / pixelRadius).coerceIn(-1.0, 1.0)))
+            .toInt().coerceIn(32, 256)
+    }
+
+    private fun circle(x: Float, y: Float, radius: Float) {
+        shapes.circle(x, y, radius, curveSegments(radius))
+    }
+
     private fun ring(x: Float, y: Float, radius: Float, width: Float, color: Color, alpha: Float = 1f) {
         shapes.setColor(color.r, color.g, color.b, alpha)
-        val count = if (radius > 40f) 72 else 36
+        val count = curveSegments(radius)
+        val inner = (radius - width / 2f).coerceAtLeast(0f)
+        val outer = radius + width / 2f
+        // A closed triangle strip avoids gaps and dark overlapping caps between line segments.
         for (index in 0 until count) {
             val a = index * TWO_PI / count
             val b = (index + 1) * TWO_PI / count
-            shapes.rectLine(x + cos(a) * radius, y + sin(a) * radius, x + cos(b) * radius, y + sin(b) * radius, width)
+            val ax = cos(a)
+            val ay = sin(a)
+            val bx = cos(b)
+            val by = sin(b)
+            shapes.triangle(x + ax * inner, y + ay * inner, x + ax * outer, y + ay * outer,
+                x + bx * outer, y + by * outer)
+            shapes.triangle(x + ax * inner, y + ay * inner, x + bx * outer, y + by * outer,
+                x + bx * inner, y + by * inner)
         }
     }
 
@@ -401,7 +481,7 @@ class WorldRenderer : Disposable {
     }
 
     override fun dispose() {
-        font.dispose()
+        fallbackBuffer?.dispose()
         batch.dispose()
         shapes.dispose()
     }

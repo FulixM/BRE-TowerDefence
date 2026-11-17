@@ -14,6 +14,8 @@ fun main() {
       return
     Lwjgl3Application(Main(), Lwjgl3ApplicationConfiguration().apply {
         setTitle("BRE Tower Defence")
+        setHdpiMode(com.badlogic.gdx.graphics.glutils.HdpiMode.Logical)
+        setSamples(4)
         //// Vsync limits the frames per second to what your hardware can display, and helps eliminate
         //// screen tearing. This setting doesn't always work on Linux, so the line after is a safeguard.
         useVsync(true)

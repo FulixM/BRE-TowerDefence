@@ -31,7 +31,7 @@ jobs:
           with ZipFile(next(Path('lwjgl3/build/libs').glob('*.jar'))) as archive:
               assert archive.namelist().count('assets.txt') == 1
               assert archive.read('assets.txt') == expected
-              assert {'img.png', 'logo.png'} <= set(archive.namelist())
+              assert {'img.png', 'logo.png', 'fonts/DejaVuSans-Latin.ttf', 'fonts/LICENSE.txt'} <= set(archive.namelist())
           PYTHON
       - name: Install virtual desktop
         run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0
@@ -45,4 +45,4 @@ jobs:
           name: test-reports-and-desktop-preview
           path: |
             core/build/reports/tests/test
-            lwjgl3/build/reports/desktop-smoke.png
+            lwjgl3/build/reports/desktop-smoke*.png

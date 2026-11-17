@@ -37,7 +37,7 @@ Start each wave when ready; there is no preparation timer. Killing enemies earns
 | Right-click / Esc | Cancel placement or selection; Esc otherwise pauses |
 | R | Request restart; confirm with Enter/R or cancel with Esc |
 
-The window scales with a FitViewport and ignores clicks in letterboxing. Losing application focus pauses the game.
+The window scales with a FitViewport and ignores clicks in letterboxing. Text is rasterized from the bundled DejaVu Sans font at the current framebuffer resolution, including HiDPI scaling; it is regenerated when the viewport density changes. Towers, gates and effects use four-sample antialiasing when available, with a supersampled battlefield fallback when the window system cannot provide it. Text stays at native resolution. Losing application focus pauses the game.
 
 ## Verify
 
@@ -54,7 +54,7 @@ The first command runs the simulation and campaign-balance tests. The second nee
 - `core/.../ui`: input, HUD, viewport, pause and mission screens.
 - `core/.../rendering`: procedural battlefield, unit silhouettes and tick-driven combat effects.
 - `lwjgl3`: desktop launcher, packaging and rendered smoke check.
-- `assets`: original template graphics retained; the battlefield art is procedural and needs no external asset downloads.
+- `assets`: original template graphics retained; procedural battlefield art and a bundled, openly licensed DejaVu Sans Latin font (license in `assets/fonts/LICENSE.txt`). No runtime asset downloads.
 
 Design choices and the next priorities are in [game-design.md](docs/game-design.md). Tower values, difficulty rules and automated campaign results are in [balance.md](docs/balance.md). This first mission has no save system, campaign progression, audio or difficulty selector yet.
 
