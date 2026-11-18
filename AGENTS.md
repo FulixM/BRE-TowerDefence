@@ -22,3 +22,9 @@ Production packages below are under `core/src/main/kotlin/io/felixmenzel/towerde
 - For broad local checks use `./gradlew --quiet --console=plain build`. PR CI runs the build, tests and desktop smoke check.
 - Keep test reports and screenshots in build output. Summarize checks and surface relevant errors.
 - Use a feature branch and a focused PR. Keep the description to the change and its verification.
+
+## After development
+
+- After finishing implementation and verification, start one fresh read-only subagent before the final reply.
+- Ask for up to three ranked ideas that move the game beyond a demo, each with a player benefit and a small playable first version.
+- The scout may delegate distinct questions to additional read-only subagents when useful. It combines their input into one ranked shortlist for the final reply.
