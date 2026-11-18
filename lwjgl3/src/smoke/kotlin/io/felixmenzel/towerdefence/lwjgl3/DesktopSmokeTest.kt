@@ -10,11 +10,16 @@ import com.badlogic.gdx.graphics.glutils.FrameBuffer
 import com.badlogic.gdx.utils.BufferUtils
 import com.badlogic.gdx.graphics.Pixmap
 import com.badlogic.gdx.graphics.PixmapIO
+import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
 import io.felixmenzel.towerdefence.rendering.ScreenFonts
+import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.Main
+import io.felixmenzel.towerdefence.simulation.Enemy
+import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.GameSimulation
+import io.felixmenzel.towerdefence.simulation.Waypoint
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
 import io.felixmenzel.towerdefence.simulation.TargetPriority
@@ -243,8 +248,9 @@ object DesktopSmokeTest {
                     check(simulation.state == GameState.RUNNING)
                     check(simulation.enemies.isNotEmpty())
                     writeScreenshot()
+                    checkEnemyDefenses()
                     screenshotWritten = true
-                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize and letterboxing; screenshot saved.")
+                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, and enemy defenses; screenshots saved.")
                     Gdx.app.exit()
                 }
             }
@@ -327,6 +333,56 @@ object DesktopSmokeTest {
             check(simulation.state == GameState.PREPARING && simulation.wave == 0)
             check(simulation.gold == GameSimulation.START_GOLD && simulation.lives == GameSimulation.START_LIVES)
             check(simulation.towers.isEmpty() && simulation.enemies.isEmpty() && simulation.shots.isEmpty())
+        }
+
+        private fun checkEnemyDefenses() {
+            val fixture = GameSimulation()
+            val enemies = privateField<MutableList<Enemy>>(fixture, "mutableEnemies")
+            fun addEnemy(x: Double, type: EnemyType): Enemy {
+                val route = listOf(Waypoint(x, 280.0), Waypoint(x + 100.0, 280.0))
+                return Enemy(enemies.size + 1L, route, 0.0, 100.0, type).also(enemies::add)
+            }
+
+            addEnemy(160.0, EnemyType.SHIELDED).takeDamage(15.0)
+            addEnemy(280.0, EnemyType.SHIELDED).takeDamage(55.0)
+            addEnemy(400.0, EnemyType.PLATED).takeDamage(50.0)
+            addEnemy(520.0, EnemyType.REGENERATING).apply {
+                takeDamage(50.0)
+                update(2.0)
+            }
+            addEnemy(640.0, EnemyType.NORMAL).takeDamage(80.0)
+
+            val renderer = privateField<WorldRenderer>(screen, "renderer")
+            val projection = Matrix4(viewport.camera.combined).translate(0f, DefenseScreen.BOARD_Y, 0f)
+            renderer.render(fixture, 1.0, projection)
+            val pixels = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
+            try {
+                fun expectColor(label: String, x: Float, y: Float, rgb: Int) {
+                    val point = viewport.project(Vector2(x, y + DefenseScreen.BOARD_Y))
+                    val px = (point.x * pixels.width / Gdx.graphics.width).toInt()
+                    val py = (point.y * pixels.height / Gdx.graphics.height).toInt()
+                    val actual = pixels.getPixel(px, py) ushr 8
+                    for (shift in listOf(16, 8, 0)) {
+                        val channel = (actual shr shift) and 255
+                        val expected = (rgb shr shift) and 255
+                        check(abs(channel - expected) <= 12) {
+                            "$label expected RGB ${rgb.toString(16)}, got ${actual.toString(16)}"
+                        }
+                    }
+                }
+
+                expectColor("full health after shield absorbs a shot", 150f, 301f, 0x7ce7a2)
+                expectColor("remaining shield", 150f, 307f, 0x56dffa)
+                expectColor("spent part of shield", 170f, 307f, 0x080d17)
+                expectColor("broken shield track", 270f, 307f, 0x080d17)
+                expectColor("armor plate after taking damage", 400f, 307f, 0xffcb68)
+                expectColor("gap between armor plates", 403f, 307f, 0x080d17)
+                expectColor("active regeneration", 542f, 301f, 0xd5a1ff)
+                expectColor("critical health", 628f, 301f, 0xff7d83)
+            } finally {
+                pixels.dispose()
+            }
+            writeScreenshot("-enemy-defenses")
         }
 
         private fun writeScreenshot(suffix: String = "") {

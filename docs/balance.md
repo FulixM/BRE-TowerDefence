@@ -2,7 +2,7 @@
 
 Preparation is untimed so players can inspect the route and plan investments. Coverage at bends rewards placement. Support towers extend or amplify damage, while attack towers handle isolated targets or groups. Partial resale makes it possible to rework a defence at a cost.
 
-For current values, see [Tower.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Tower.kt), [Enemy.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Enemy.kt), [Mission.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Mission.kt), and [GameSimulation.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/GameSimulation.kt).
+For current values, see [Tower.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Tower.kt), [Enemy.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Enemy.kt), [Mission.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Mission.kt), and [Waves.kt](../core/src/main/kotlin/io/felixmenzel/towerdefence/simulation/Waves.kt).
 
 ## Automated campaign checks
 
@@ -10,7 +10,13 @@ For current values, see [Tower.kt](../core/src/main/kotlin/io/felixmenzel/towerd
 
 The reference plans use public commands and earned gold. They build in a fixed order between waves, then upgrade in construction order. The short Switchback probe stops after four towers and continues buying upgrades. Each wave has a simulated timeout.
 
-## Recorded results with the expanded roster
+## Fifteen-wave campaign
+
+The final formations rotate the main threats to reward different parts of a mixed defence. Enemy health keeps rising, but more slowly than in the opening. The original ten waves retain their timing, composition and health.
+
+In deterministic probes, both reference plans won at all difficulties. Relaxed and Normal retained all lives. Veteran finished with ten lives on each map after losing two in the Armored Column. Limiting the plan to eight towers still wins both maps on Normal but loses in waves 12–13 on Veteran.
+
+## Historical results from the ten-wave expanded roster
 
 The reference plans beat both maps at every difficulty without losing lives. They finished with 419 gold on Relaxed, 447 on Normal, and 411 on Veteran. The four-tower Switchback plan won on Relaxed with 22 lives, lost in wave 10 on Normal, and lost in wave 9 on Veteran.
 

@@ -1,7 +1,6 @@
 package io.felixmenzel.towerdefence.simulation
 
 import java.util.Collections
-import kotlin.math.roundToInt
 
 /** Pure Kotlin game rules. Rendering and input never own gold, health, or damage. */
 class GameSimulation(
@@ -190,8 +189,7 @@ class GameSimulation(
 
     private fun spawnEnemy() {
         val type = enemyType(wave, spawnedThisWave)
-        val waveHealthMultiplier = 1.0 + (wave - 1) * 0.22 + (wave - 1) * (wave - 1) * 0.045
-        val health = type.baseHealth * waveHealthMultiplier * difficulty.healthMultiplier
+        val health = type.baseHealth * Waves.healthMultiplier(wave) * difficulty.healthMultiplier
         mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type)
         spawnedThisWave++
         remainingToSpawn--
@@ -204,22 +202,15 @@ class GameSimulation(
         const val WORLD_HEIGHT = 560.0
         const val START_GOLD = 220
         const val START_LIVES = 20
-        const val TOTAL_WAVES = 10
+        val TOTAL_WAVES: Int get() = Waves.total
         const val SHOT_LIFETIME_TICKS = 12L
         const val BUILD_MARGIN = 24.0
         const val PATH_CLEARANCE = 36.0
         const val TOWER_SPACING = 44.0
 
-        fun enemyCount(wave: Int): Int = 8 + (wave - 1) * 2
-        fun spawnIntervalTicks(wave: Int): Long = ((0.85 - (wave - 1) * 0.045).coerceAtLeast(0.45) * UPS).roundToInt().toLong()
-        fun enemyType(wave: Int, index: Int): EnemyType = when {
-            wave >= EnemyType.REGENERATING.firstWave && index % 9 == 7 -> EnemyType.REGENERATING
-            wave >= EnemyType.SHIELDED.firstWave && index % 7 == 5 -> EnemyType.SHIELDED
-            wave >= EnemyType.PLATED.firstWave && index % 7 == 3 -> EnemyType.PLATED
-            wave >= EnemyType.ARMORED.firstWave && index % 5 == 4 -> EnemyType.ARMORED
-            wave >= EnemyType.FAST.firstWave && index % 3 == 2 -> EnemyType.FAST
-            else -> EnemyType.NORMAL
-        }
+        fun enemyCount(wave: Int): Int = Waves.enemyCount(wave)
+        fun spawnIntervalTicks(wave: Int): Long = Waves.intervalTicks(wave)
+        fun enemyType(wave: Int, index: Int): EnemyType = Waves.enemyType(wave, index)
 
         private fun distanceToSegmentSquared(x: Double, y: Double, start: Waypoint, end: Waypoint): Double {
             val dx = end.x - start.x

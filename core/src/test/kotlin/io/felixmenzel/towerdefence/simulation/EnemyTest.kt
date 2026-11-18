@@ -90,4 +90,33 @@ class EnemyTest {
         assertFailsWith<IllegalArgumentException> { Waypoint(Double.NaN, 0.0) }
         assertFailsWith<IllegalArgumentException> { enemy().applySlow(0.0, 1.0) }
     }
+
+    @Test
+    fun `shield capacity remains visible after shield breaks and health takes overflow`() {
+        val enemy = Enemy(1, listOf(Waypoint(0.0, 0.0), Waypoint(100.0, 0.0)), 0.0, 100.0, EnemyType.SHIELDED)
+        assertEquals(45.0, enemy.maxShield)
+        enemy.takeDamage(20.0)
+        assertEquals(25.0, enemy.shield)
+        assertEquals(100.0, enemy.health)
+        enemy.takeDamage(35.0)
+        assertEquals(0.0, enemy.shield)
+        assertEquals(45.0, enemy.maxShield)
+        assertEquals(90.0, enemy.health)
+    }
+
+    @Test
+    fun `regeneration indicator tracks damage cooldown healing and full health`() {
+        val enemy = Enemy(1, listOf(Waypoint(0.0, 0.0), Waypoint(100.0, 0.0)), 0.0, 100.0, EnemyType.REGENERATING)
+        assertFalse(enemy.isRegenerating)
+        enemy.takeDamage(25.0)
+        enemy.update(1.0)
+        assertFalse(enemy.isRegenerating)
+        enemy.update(0.75)
+        assertTrue(enemy.isRegenerating)
+        enemy.takeDamage(5.0)
+        assertFalse(enemy.isRegenerating)
+        enemy.update(10.0)
+        assertEquals(enemy.maxHealth, enemy.health)
+        assertFalse(enemy.isRegenerating)
+    }
 }

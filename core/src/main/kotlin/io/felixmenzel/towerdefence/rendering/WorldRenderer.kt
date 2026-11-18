@@ -13,6 +13,10 @@ import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.BufferUtils
 import com.badlogic.gdx.utils.Disposable
+import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.ARMOR
+import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.HEALTH
+import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.REGENERATION
+import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.SHIELD
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
@@ -128,6 +132,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             ring(tower.x.toFloat(), tower.y.toFloat(), 33f, 2f, ECHO)
         }
         drawShots(simulation)
+        for (enemy in simulation.enemies) drawEnemyDefenses(enemy, alpha)
         if (buildType != null && cursorX != null && cursorY != null) {
             drawPreview(simulation, buildType, cursorX.toFloat(), cursorY.toFloat())
         }
@@ -370,8 +375,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             EnemyType.FAST -> MAGENTA
             EnemyType.NORMAL -> CORAL
             EnemyType.PLATED -> PLATE_COLOR
-            EnemyType.SHIELDED -> ICE
-            EnemyType.REGENERATING -> HEALTH
+            EnemyType.SHIELDED -> SHIELD
+            EnemyType.REGENERATING -> REGENERATION
         }
         // A brief white tint is derived from the bounded hit history, with no event ownership here.
         val color = hitColor.set(baseColor).lerp(Color.WHITE, recentHitStrength(enemy, simulation) * 0.85f)
@@ -403,7 +408,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 circle(x, y, radius)
                 shapes.color = PANEL
                 diamond(x, y, 7f)
-                if (enemy.shield > 0.0) ring(x, y, radius + 4f, 2f, ICE)
+                if (enemy.shield > 0.0) ring(x, y, radius + 4f, 2f, SHIELD)
             }
             EnemyType.REGENERATING -> {
                 circle(x, y, radius)
@@ -412,16 +417,47 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.rect(x - 7f, y - 2f, 14f, 4f)
             }
         }
-        val width = radius * 2f + 4f
-        shapes.color = SHADOW
-        shapes.rect(x - width / 2f - 1f, y + radius + 7f, width + 2f, 5f)
-        val ratio = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
-        shapes.color = if (ratio < 0.3f) CORAL else HEALTH
-        shapes.rect(x - width / 2f, y + radius + 8f, width * ratio, 3f)
-        if (enemy.shield > 0.0) {
-            shapes.color = ICE
-            val shieldRatio = enemy.shield / (enemy.maxHealth * enemy.type.shieldFraction)
-            shapes.rect(x - width / 2f, y + radius + 13f, width * shieldRatio.toFloat(), 2f)
+    }
+
+    private fun drawEnemyDefenses(enemy: Enemy, alpha: Double) {
+        if (!enemy.isAlive || enemy.hasReachedGoal) return
+        val x = enemy.interpolatedX(alpha).toFloat()
+        val y = enemy.interpolatedY(alpha).toFloat()
+        val health = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
+        drawDefenseMeter(x - 15f, y + 19f, 4f, health, if (health < 0.3f) CORAL else HEALTH, BORDER)
+
+        val hasShield = enemy.maxShield > 0.0
+        if (hasShield) {
+            val shield = (enemy.shield / enemy.maxShield).toFloat().coerceIn(0f, 1f)
+            drawDefenseMeter(x - 15f, y + 26f, 3f, shield, SHIELD, SHIELD_TRACK_EDGE)
+        }
+        if (enemy.type.damageMultiplier < 1.0) {
+            // Fixed plates signify passive resistance. Only health and shield have a fill level.
+            val armorY = y + if (hasShield) 33f else 26f
+            shapes.color = DEFENSE_TRACK
+            shapes.rect(x - 10f, armorY - 1f, 20f, 5f)
+            shapes.color = ARMOR
+            for (segment in -1..1) {
+                shapes.rect(x + segment * 7f - 2f, armorY, 4f, 3f)
+            }
+        }
+        if (enemy.isRegenerating) {
+            shapes.color = DEFENSE_TRACK
+            shapes.rect(x + 17f, y + 16f, 10f, 10f)
+            shapes.color = REGENERATION
+            shapes.rect(x + 21f, y + 17f, 2f, 8f)
+            shapes.rect(x + 18f, y + 20f, 8f, 2f)
+        }
+    }
+
+    private fun drawDefenseMeter(x: Float, y: Float, height: Float, fraction: Float, fill: Color, edge: Color) {
+        shapes.color = edge
+        shapes.rect(x - 1f, y - 1f, 32f, height + 2f)
+        shapes.color = DEFENSE_TRACK
+        shapes.rect(x, y, 30f, height)
+        if (fraction > 0f) {
+            shapes.color = fill
+            shapes.rect(x, y, 30f * fraction, height)
         }
     }
 
@@ -656,7 +692,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val ICE = Color.valueOf("a8bfff")
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")
-        val HEALTH = Color.valueOf("8ae0b4")
+        val DEFENSE_TRACK = Color.valueOf("080d17")
+        val SHIELD_TRACK_EDGE = Color.valueOf("3c7383")
         val MUTED = Color.valueOf("9aafc6")
         val DIM = Color.valueOf("5e768f")
     }

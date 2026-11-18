@@ -131,6 +131,7 @@ class GameSimulationTest {
             assertTrue(game.startWave().success)
             assertEquals(expectedWave + 1, game.wave)
             clearCurrentWave(game)
+            if (game.wave < game.totalWaves) assertEquals(GameState.PREPARING, game.state)
         }
         assertEquals(GameState.WON, game.state)
         val gold = game.gold
@@ -141,7 +142,7 @@ class GameSimulationTest {
         repeat(100) { game.update() }
         assertEquals(gold, game.gold)
         assertEquals(GameState.WON, game.state)
-        assertEquals(10, game.wave)
+        assertEquals(game.totalWaves, game.wave)
     }
 
     @Test
