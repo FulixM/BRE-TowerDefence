@@ -2,7 +2,12 @@ name: Build and playability checks
 
 on:
   push:
+    branches: [master]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,31 +23,45 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build with a legacy local asset index and run simulation tests
+      - name: Install virtual desktop
+        run: |
+          log="$RUNNER_TEMP/virtual-desktop.log"
+          if { sudo apt-get -qq update && sudo apt-get -qq install -y xvfb libgl1-mesa-dri libglx-mesa0; } > "$log" 2>&1; then
+            echo "Virtual desktop ready."
+          else
+            cat "$log"
+            exit 1
+          fi
+      - name: Build, test, and check desktop controls
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
         run: |
           printf 'legacy-asset-index\n' > assets/assets.txt
-          ./gradlew clean build test --console=plain
+          log="$RUNNER_TEMP/gradle.log"
+          if xvfb-run -a ./gradlew --quiet --console=plain build lwjgl3:smokeTest > "$log" 2>&1; then
+            echo "Build, tests, and desktop checks passed."
+          else
+            cat "$log"
+            exit 1
+          fi
+      - name: Verify packaged assets
+        run: |
           python3 - <<'PYTHON'
           from pathlib import Path
           from zipfile import ZipFile
           expected = Path('build/generated/assets/assets.txt').read_bytes()
-          assert expected != Path('assets/assets.txt').read_bytes()
-          assert Path('lwjgl3/build/resources/main/assets.txt').read_bytes() == expected
+          assert expected != Path('assets/assets.txt').read_bytes(), 'Generated index matches the legacy fixture'
+          assert Path('lwjgl3/build/resources/main/assets.txt').read_bytes() == expected, 'Incorrect processed asset index'
           with ZipFile(next(Path('lwjgl3/build/libs').glob('*.jar'))) as archive:
-              assert archive.namelist().count('assets.txt') == 1
-              assert archive.read('assets.txt') == expected
-              assert {'img.png', 'logo.png', 'fonts/DejaVuSans-Latin.ttf', 'fonts/LICENSE.txt'} <= set(archive.namelist())
+              assert archive.namelist().count('assets.txt') == 1, 'Expected exactly one asset index in the JAR'
+              assert archive.read('assets.txt') == expected, 'Unexpected asset index in the JAR'
+              assert {'img.png', 'logo.png', 'fonts/DejaVuSans-Latin.ttf', 'fonts/LICENSE.txt'} <= set(archive.namelist()), 'Expected images and licensed font in the JAR'
           PYTHON
-      - name: Install virtual desktop
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0
-      - name: Exercise rendered desktop controls
-        env:
-          LIBGL_ALWAYS_SOFTWARE: '1'
-        run: xvfb-run -a ./gradlew lwjgl3:smokeTest --console=plain
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
-          name: test-reports-and-desktop-preview
+          name: failure-diagnostics
+          if-no-files-found: ignore
           path: |
             core/build/reports/tests/test
             lwjgl3/build/reports/desktop-smoke*.png
