@@ -73,24 +73,46 @@ class Tower(
         if (currentTick < nextAttackTick) return null
         val target = selectTarget(enemies) ?: return null
 
-        val hitEnemyIds = if (type == TowerType.CANNON) {
-            buildList {
-                for (enemy in enemies) {
-                    val dx = enemy.x - target.x
-                    val dy = enemy.y - target.y
-                    if (enemy.isAlive && !enemy.hasReachedGoal && dx * dx + dy * dy <= SPLASH_RADIUS * SPLASH_RADIUS) {
-                        enemy.takeDamage(damage)
-                        add(enemy.id)
-                    }
-                }
-            }
-        } else {
-            target.takeDamage(damage)
-            if (type == TowerType.FROST && target.isAlive) target.applySlow(0.55, 1.5)
-            listOf(target.id)
+        val hits = when (type) {
+            TowerType.CANNON -> enemies.filter { it.canBeHit && within(it, target, SPLASH_RADIUS) }
+            TowerType.INFERNO -> enemies.filter { it.canBeHit && distanceSquaredTo(it) <= range * range }
+            TowerType.ARC -> chainFrom(target, enemies)
+            else -> listOf(target)
         }
+
+        for ((index, enemy) in hits.withIndex()) {
+            applyTowerHit(type, enemy, damage, index)
+        }
+        val hitEnemyIds = hits.map { it.id }
         nextAttackTick = currentTick + attackIntervalTicks
-        return Shot(x, y, target.x, target.y, type, currentTick, hitEnemyIds)
+        return Shot(
+            x, y, target.x, target.y, type, currentTick, hitEnemyIds,
+            arcJumps = if (type == TowerType.ARC) hits.drop(1).map { Waypoint(it.x, it.y) } else emptyList(),
+            areaRadius = if (type == TowerType.INFERNO) range else 0.0,
+        )
+    }
+
+    private fun chainFrom(target: Enemy, enemies: List<Enemy>): List<Enemy> = buildList {
+        add(target)
+        repeat(ARC_DAMAGE_FACTORS.size - 1) {
+            val previous = last()
+            val next = enemies.asSequence()
+                .filter { it.canBeHit && it !in this && within(it, previous, ARC_JUMP_RANGE) }
+                .minWithOrNull(compareBy({ separationSquared(it, previous) }, { it.id }))
+                ?: return@buildList
+            add(next)
+        }
+    }
+
+    private val Enemy.canBeHit: Boolean get() = isAlive && !hasReachedGoal
+
+    private fun within(enemy: Enemy, source: Enemy, radius: Double) =
+        separationSquared(enemy, source) <= radius * radius
+
+    private fun separationSquared(enemy: Enemy, source: Enemy): Double {
+        val dx = enemy.x - source.x
+        val dy = enemy.y - source.y
+        return dx * dx + dy * dy
     }
 
     private fun distanceSquaredTo(enemy: Enemy): Double {
@@ -102,6 +124,8 @@ class Tower(
     companion object {
         const val MAX_LEVEL = 3
         const val SPLASH_RADIUS = 58.0
+        private const val ARC_JUMP_RANGE = 76.0
+
     }
 }
 
@@ -115,7 +139,12 @@ enum class TowerType(
 ) {
     RAPID("Pulse", 75, "Fast single-target fire", 135.0, 12.0, 18L),
     CANNON("Cannon", 120, "Area damage against clusters", 155.0, 34.0, 66L),
-    FROST("Frost", 90, "Slows targets by 45%", 125.0, 6.0, 42L),
+    FROST("Frost", 90, "Slows its target by 45%", 125.0, 6.0, 42L),
+    RAIL("Rail", 140, "Long-range shot that ignores armor", 220.0, 92.0, 115L),
+    ARC("Arc", 125, "Chains to two nearby enemies", 135.0, 32.0, 54L),
+    VENOM("Venom", 100, "Poisons for 3s. Strongest dose wins.", 145.0, 11.0, 60L),
+    INFERNO("Inferno", 110, "Hits every enemy in its short reach", 84.0, 12.0, 24L),
+    BEACON("Beacon", 85, "Marks a target for 25% more damage", 150.0, 8.0, 56L),
 }
 
 /** A visual trace of an already resolved hit, not a second source of damage. */
@@ -127,6 +156,9 @@ data class Shot(
     val type: TowerType,
     val tick: Long,
     val hitEnemyIds: List<Long>,
+    val arcJumps: List<Waypoint> = emptyList(),
+    val areaRadius: Double = 0.0,
+    val isEcho: Boolean = false,
 )
 
 /** Exact next-level values, calculated by the same rules as the active tower stats. */
@@ -136,4 +168,18 @@ enum class TargetPriority(val title: String) {
     FIRST("First"),
     STRONGEST("Strongest"),
     NEAREST("Nearest"),
+}
+
+private val ARC_DAMAGE_FACTORS = doubleArrayOf(1.0, 0.65, 0.4)
+
+internal fun applyTowerHit(type: TowerType, enemy: Enemy, damage: Double, impactIndex: Int = 0) {
+    val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
+    enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
+    if (!enemy.isAlive) return
+    when (type) {
+        TowerType.FROST -> enemy.applySlow(0.55, 1.5)
+        TowerType.VENOM -> enemy.applyPoison(damage, 3.0)
+        TowerType.BEACON -> enemy.mark()
+        else -> Unit
+    }
 }

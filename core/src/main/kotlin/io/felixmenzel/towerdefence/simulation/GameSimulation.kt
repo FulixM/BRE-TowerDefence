@@ -38,6 +38,7 @@ class GameSimulation(
     private var nextTowerId = 1L
     private var spawnedThisWave = 0
     private var nextSpawnTick = 0L
+    internal val echo = WaveEcho()
 
     fun update() {
         tick++
@@ -49,35 +50,48 @@ class GameSimulation(
             nextSpawnTick = tick + spawnIntervalTicks(wave)
         }
         for (enemy in mutableEnemies) enemy.update(STEP_SECONDS)
+        collectDefeatedEnemies()
         // A leak is resolved before towers fire: reaching the exit is definitive.
-        val escaped = mutableEnemies.count { it.hasReachedGoal }
+        val escaped = mutableEnemies.count { it.isAlive && it.hasReachedGoal }
         if (escaped > 0) {
             leakedEnemies += escaped
             lives = (lives - escaped).coerceAtLeast(0)
-            mutableEnemies.removeAll { it.hasReachedGoal }
+            mutableEnemies.removeAll { it.isAlive && it.hasReachedGoal }
         }
         if (lives == 0) {
             state = GameState.LOST
             remainingToSpawn = 0
             mutableShots.clear()
+            echo.reset()
             return
         }
         for (tower in mutableTowers) {
-            tower.update(tick, mutableEnemies)?.let(mutableShots::add)
+            val shot = tower.update(tick, mutableEnemies) ?: continue
+            mutableShots.add(shot)
+            echo.record(tower, shot)
         }
-        val defeated = mutableEnemies.filter { !it.isAlive }
-        kills += defeated.size
-        gold += defeated.sumOf { it.bounty }
-        mutableEnemies.removeAll { !it.isAlive }
+        echo.replay(tick, mutableEnemies, mutableShots)
+        collectDefeatedEnemies()
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
             state = if (wave == totalWaves) GameState.WON else GameState.PREPARING
+            if (state == GameState.WON) echo.reset() else echo.finishWave()
+        }
+    }
+
+    private fun collectDefeatedEnemies() {
+        mutableEnemies.removeAll { enemy ->
+            if (enemy.isAlive) return@removeAll false
+            kills++
+            gold += enemy.bounty
+            true
         }
     }
 
     fun startWave(): ActionResult {
         if (state != GameState.PREPARING) return ActionResult(false, "Finish the current wave first")
         wave++
+        echo.startWave(tick)
         spawnedThisWave = 0
         remainingToSpawn = enemyCount(wave)
         nextSpawnTick = tick + 1L
@@ -112,11 +126,23 @@ class GameSimulation(
         return ActionResult(true, "${tower.type.title} targets ${tower.targetPriority.title.lowercase()}", id)
     }
 
+    fun selectEchoTower(id: Long): ActionResult {
+        if (state != GameState.PREPARING || wave >= totalWaves - 1) {
+            return ActionResult(false, "Choose a recorder before a wave that has a following wave")
+        }
+        val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
+        val armed = echo.toggleTower(tower.id)
+        val message = if (armed) "${tower.type.title} will record wave ${wave + 1} and echo in wave ${wave + 2}"
+            else "Echo recording disarmed"
+        return ActionResult(true, message, id)
+    }
+
     fun sellTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to sell again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         gold += tower.sellValue
         mutableTowers.remove(tower)
+        echo.onTowerSold(id)
         return ActionResult(true, "Sold for ${tower.sellValue} gold")
     }
 
@@ -145,6 +171,7 @@ class GameSimulation(
         mutableEnemies.clear()
         mutableTowers.clear()
         mutableShots.clear()
+        echo.reset()
         tick = 0L
         gold = difficulty.startingGold
         lives = difficulty.startingLives
@@ -186,8 +213,11 @@ class GameSimulation(
         fun enemyCount(wave: Int): Int = 8 + (wave - 1) * 2
         fun spawnIntervalTicks(wave: Int): Long = ((0.85 - (wave - 1) * 0.045).coerceAtLeast(0.45) * UPS).roundToInt().toLong()
         fun enemyType(wave: Int, index: Int): EnemyType = when {
-            wave >= 5 && index % 5 == 4 -> EnemyType.ARMORED
-            wave >= 3 && index % 3 == 2 -> EnemyType.FAST
+            wave >= EnemyType.REGENERATING.firstWave && index % 9 == 7 -> EnemyType.REGENERATING
+            wave >= EnemyType.SHIELDED.firstWave && index % 7 == 5 -> EnemyType.SHIELDED
+            wave >= EnemyType.PLATED.firstWave && index % 7 == 3 -> EnemyType.PLATED
+            wave >= EnemyType.ARMORED.firstWave && index % 5 == 4 -> EnemyType.ARMORED
+            wave >= EnemyType.FAST.firstWave && index % 3 == 2 -> EnemyType.FAST
             else -> EnemyType.NORMAL
         }
 

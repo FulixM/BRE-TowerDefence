@@ -16,8 +16,10 @@ import com.badlogic.gdx.utils.Align
 import com.badlogic.gdx.utils.viewport.FitViewport
 import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.rendering.WorldRenderer
+import io.felixmenzel.towerdefence.rendering.towerColor
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
+import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.ActionResult
 import io.felixmenzel.towerdefence.simulation.FixedStepLoop
 import io.felixmenzel.towerdefence.simulation.GameSimulation
@@ -45,6 +47,7 @@ class DefenseScreen : KtxScreen {
     private var paused = false
     private var doubleSpeed = false
     private var restartConfirmation = false
+    private var enemyGuide = false
     private var missionSetup = false
     private var missionLaunchConfirmation = false
     private var pendingMap = simulation.battleMap
@@ -79,6 +82,10 @@ class DefenseScreen : KtxScreen {
         }
 
         override fun keyDown(keycode: Int): Boolean {
+            if (enemyGuide) {
+                if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.G) closeEnemyGuide()
+                return true
+            }
             if (missionSetup) {
                 when (keycode) {
                     Input.Keys.ENTER -> if (missionLaunchConfirmation) launchMission() else requestLaunch()
@@ -104,7 +111,18 @@ class DefenseScreen : KtxScreen {
                 if (keycode == Input.Keys.R || keycode == Input.Keys.ENTER) restart()
                 return true
             }
+            val tower = towerShortcut(keycode)
+            if (tower != null) {
+                if (!paused) choose(tower)
+                return true
+            }
             when (keycode) {
+                Input.Keys.G -> enemyGuide = true
+                Input.Keys.E -> if (!paused) {
+                    val tower = selectedTower()
+                    if (tower == null) notify("Select a tower to record its shots", true)
+                    else report(simulation.selectEchoTower(tower.id))
+                }
                 Input.Keys.P -> togglePause()
                 Input.Keys.ESCAPE -> {
                     if (buildType != null || selectedTowerId != null) {
@@ -118,9 +136,6 @@ class DefenseScreen : KtxScreen {
                     else if (simulation.state == GameState.PREPARING) report(simulation.startWave())
                     else togglePause()
                 }
-                Input.Keys.NUM_1, Input.Keys.NUMPAD_1 -> if (!paused) choose(TowerType.RAPID)
-                Input.Keys.NUM_2, Input.Keys.NUMPAD_2 -> if (!paused) choose(TowerType.CANNON)
-                Input.Keys.NUM_3, Input.Keys.NUMPAD_3 -> if (!paused) choose(TowerType.FROST)
                 Input.Keys.U -> if (!paused) selectedTower()?.let { report(simulation.upgradeTower(it.id)) }
                 Input.Keys.T -> if (!paused) selectedTower()?.let { report(simulation.cycleTargetPriority(it.id)) }
                 Input.Keys.F -> if (!paused) doubleSpeed = !doubleSpeed
@@ -128,6 +143,20 @@ class DefenseScreen : KtxScreen {
             }
             return true
         }
+    }
+
+    private fun towerShortcut(keycode: Int): TowerType? {
+        val index = when (keycode) {
+            in Input.Keys.NUM_1..Input.Keys.NUM_8 -> keycode - Input.Keys.NUM_1
+            in Input.Keys.NUMPAD_1..Input.Keys.NUMPAD_8 -> keycode - Input.Keys.NUMPAD_1
+            else -> return null
+        }
+        return TowerType.entries.getOrNull(index)
+    }
+
+    private fun closeEnemyGuide() {
+        enemyGuide = false
+        loop.reset()
     }
 
     override fun show() {
@@ -262,7 +291,7 @@ class DefenseScreen : KtxScreen {
     }
 
     private fun isFinished() = simulation.state == GameState.WON || simulation.state == GameState.LOST
-    private fun isModal() = paused || restartConfirmation || missionSetup || isFinished()
+    private fun isModal() = paused || restartConfirmation || missionSetup || enemyGuide || isFinished()
 
     private fun drawInterface(cursor: Vector2?) {
         buttons.clear()
@@ -286,12 +315,20 @@ class DefenseScreen : KtxScreen {
         button("restart", "Restart [R]", 1063f, 660f, 113f, 40f) { restartConfirmation = true }
 
         text("BUILD TOWERS", 922f, 614f, 1f, WHITE)
-        text("Select a role. Place beside the route.", 922f, 593f, 0.8f, MUTED)
-        towerCard(TowerType.RAPID, "1", 508f, "Fast, reliable single-target fire", CYAN)
-        towerCard(TowerType.CANNON, "2", 425f, "Splash damage against groups", ORANGE)
-        towerCard(TowerType.FROST, "3", 342f, "Slows enemies for other towers", ICE)
-
+        for ((index, type) in TowerType.entries.withIndex()) {
+            val x = 922f + (index % 2) * 130f
+            val y = 550f - (index / 2) * 55f
+            towerCard(type, index + 1, x, y)
+        }
         val tower = selectedTower()
+        button("enemy-guide", "Enemies [G]", 922f, 330f, 124f, 32f, scale = 0.8f) { enemyGuide = true }
+        val armed = tower != null && simulation.echo.armedTowerId == tower.id
+        button("echo", if (armed) "Armed [E]" else "Record [E]", 1052f, 330f, 124f, 32f,
+            enabled = tower != null && simulation.state == GameState.PREPARING && simulation.wave < simulation.totalWaves - 1,
+            accent = ECHO, scale = 0.8f, selected = armed) {
+            tower?.let { report(simulation.selectEchoTower(it.id)) }
+        }
+
         when {
             buildType != null -> buildPanel(buildType!!)
             tower != null -> selectedPanel(tower)
@@ -305,10 +342,19 @@ class DefenseScreen : KtxScreen {
 
         val preparing = simulation.state == GameState.PREPARING
         text(if (preparing) "NEXT / WAVE ${simulation.wave + 1}" else "WAVE ${simulation.wave} / INCOMING", 24f, 58f, 0.85f, CYAN)
+        val echo = simulation.echo
+        val echoStatus = when {
+            preparing && echo.recordedCount > 0 -> "Echo ready / ${echo.recordedCount} shots"
+            preparing && echo.armedTowerId != null -> "Echo recorder armed"
+            echo.remainingCount > 0 -> "Echo / ${echo.remainingCount} shots left"
+            echo.recordingTowerId != null -> "Recording / ${echo.recordedCount} shots"
+            else -> null
+        }
+        echoStatus?.let { text(it, 251f, 58f, 0.82f, ECHO) }
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
         button("wave", nextLabel, 565f, 20f, 310f, 43f, preparing, CYAN) { report(simulation.startWave()) }
-        text("1-3 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
+        text("1-8 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
         text("Space Wave/Pause   P Pause   F Speed", 922f, 36f, 0.75f, MUTED)
 
         // Feedback sits inside the board's unused upper margin, without hiding the route.
@@ -317,7 +363,7 @@ class DefenseScreen : KtxScreen {
             simulation.placementError(cursor.x.toDouble(), (cursor.y - BOARD_Y).toDouble())
                 ?: if (simulation.gold < buildType!!.cost) "Not enough gold for ${buildType!!.title}." else null
         } else null
-        val hint = placementReason ?: if (messageTime > 0f || simulation.wave == 0) message else "Drifter: steady / Runner: fast / Bulwark: high health. Combine tower roles."
+        val hint = placementReason ?: if (messageTime > 0f || simulation.wave == 0) message else "Open the enemy guide [G] to check enemy abilities and counters."
         rect(18f, 590f, 864f, 32f, BACKGROUND)
         rect(18f, 590f, 3f, 32f, if (placementReason != null || messageError && messageTime > 0f) RED else CYAN)
         text(hint, 31f, 611f, 0.9f, if (placementReason != null || messageError && messageTime > 0f) RED else WHITE, 840f)
@@ -349,7 +395,7 @@ class DefenseScreen : KtxScreen {
             font.color = if (button.enabled) WHITE else MUTED
             glyph.setText(font, button.label)
             font.draw(batch, button.label, fonts.snap(button.bounds.x + (button.bounds.width - glyph.width) / 2f),
-                fonts.snap(button.bounds.y + (button.bounds.height + glyph.height) / 2f))
+                fonts.snap(button.bounds.y + (button.bounds.height + glyph.height) / 2f + button.labelOffsetY))
         }
         batch.end()
     }
@@ -365,7 +411,8 @@ class DefenseScreen : KtxScreen {
         text("PLACING / ${type.title.uppercase()}", 922f, 313f, 0.95f, towerColor(type))
         text("Cost ${type.cost}  /  Range ${type.baseRange.roundToInt()}", 922f, 285f, 0.9f, WHITE)
         text("${type.baseDamage.roundToInt()} damage / ${formatRate(type.baseAttackIntervalTicks)} shots per sec", 922f, 262f, 0.86f, MUTED)
-        text("Green = clear ground\nRed = cannot build here\nKeep the route clear.", 922f, 229f, 0.88f, MUTED, 250f)
+        text(type.description, 922f, 230f, 0.88f, WHITE, 250f)
+        text("Click clear ground to build.", 922f, 175f, 0.80f, MUTED, 250f)
         button("cancel", "Cancel placement [Esc]", 922f, 116f, 254f, 40f) { buildType = null }
     }
 
@@ -391,6 +438,10 @@ class DefenseScreen : KtxScreen {
     }
 
     private fun drawModal() {
+        if (enemyGuide) {
+            drawEnemyGuide()
+            return
+        }
         if (missionSetup && !missionLaunchConfirmation) {
             drawMissionSetup()
             return
@@ -472,13 +523,24 @@ class DefenseScreen : KtxScreen {
         button("cancel-mission", "Cancel [Esc]", 502f, 160f, 300f, 48f) { closeMissionSetup() }
     }
 
-    private fun towerCard(type: TowerType, key: String, y: Float, description: String, accent: Color) {
-        val chosen = buildType == type
-        rect(922f, y, 254f, 73f, if (chosen) Color.valueOf("243247") else BACKGROUND)
-        rect(922f, y, 3f, 73f, accent)
-        text(description, 934f, y + 19f, 0.76f, MUTED)
-        button("build-$key", "[$key] ${type.title}   ${type.cost}g", 931f, y + 29f, 236f, 37f,
-            enabled = true, accent = if (chosen) accent else BORDER, scale = 0.95f) { choose(type) }
+    private fun drawEnemyGuide() {
+        rect(140f, 134f, 720f, 452f, Color.valueOf("080d17"))
+        rect(140f, 582f, 720f, 4f, CYAN)
+        text("ENEMY GUIDE", 182f, 550f, 1.65f, WHITE)
+        for ((index, type) in EnemyType.entries.withIndex()) {
+            val y = 493f - index * 46f
+            text(type.title, 182f, y, 0.95f, WHITE)
+            text("Wave ${type.firstWave}+", 294f, y, 0.85f, CYAN)
+            text(type.description, 394f, y, 0.83f, MUTED, 411f)
+        }
+        button("close-guide", "Back [Esc / G]", 182f, 162f, 300f, 44f) { closeEnemyGuide() }
+    }
+
+    private fun towerCard(type: TowerType, key: Int, x: Float, y: Float) {
+        val accent = towerColor(type)
+        button("build-$key", "[$key] ${type.title}", x, y, 124f, 49f, accent = accent, scale = 0.84f,
+            selected = buildType == type, labelOffsetY = 8f) { choose(type) }
+        text("${type.cost}g", x + 12f, y + 17f, 0.70f, if (simulation.gold >= type.cost) GOLD else MUTED)
     }
 
     private fun stat(label: String, value: String, x: Float, color: Color) {
@@ -487,12 +549,13 @@ class DefenseScreen : KtxScreen {
     }
 
     private fun button(id: String, title: String, x: Float, y: Float, width: Float, height: Float,
-        enabled: Boolean = true, accent: Color = BORDER, scale: Float = 0.9f, action: () -> Unit) {
+        enabled: Boolean = true, accent: Color = BORDER, scale: Float = 0.9f,
+        selected: Boolean = false, labelOffsetY: Float = 0f, action: () -> Unit) {
         val bounds = Rectangle(x, y, width, height)
         val hover = uiPoint(Gdx.input.x, Gdx.input.y)?.let(bounds::contains) == true
-        rect(x, y, width, height, if (enabled && hover) HOVER else BUTTON)
+        rect(x, y, width, height, if (enabled && (hover || selected)) HOVER else BUTTON)
         rect(x, y, width, 2f, if (enabled) accent else BORDER)
-        buttons += Button(id, title, bounds, enabled, scale, action)
+        buttons += Button(id, title, bounds, enabled, scale, labelOffsetY, action)
     }
 
     private fun rect(x: Float, y: Float, width: Float, height: Float, color: Color) {
@@ -502,12 +565,6 @@ class DefenseScreen : KtxScreen {
 
     private fun text(value: String, x: Float, y: Float, scale: Float = 1f, color: Color = WHITE, width: Float = 0f) {
         labels += Label(value, x, y, scale, color, width)
-    }
-
-    private fun towerColor(type: TowerType) = when (type) {
-        TowerType.RAPID -> CYAN
-        TowerType.CANNON -> ORANGE
-        TowerType.FROST -> ICE
     }
 
     private fun formatDamage(damage: Double): String =
@@ -525,7 +582,7 @@ class DefenseScreen : KtxScreen {
 
     private data class Label(val text: String, val x: Float, val y: Float, val scale: Float, val color: Color, val width: Float)
     private data class Button(val id: String, val label: String, val bounds: Rectangle, val enabled: Boolean,
-        val scale: Float, val action: () -> Unit)
+        val scale: Float, val labelOffsetY: Float, val action: () -> Unit)
 
     companion object {
         const val WIDTH = 1200f
@@ -540,10 +597,10 @@ class DefenseScreen : KtxScreen {
         private val HOVER = Color.valueOf("2c435e")
         private val WHITE = Color.valueOf("e6edf7")
         private val MUTED = Color.valueOf("9aaec6")
+        private val ECHO = Color.valueOf("c9bbff")
         private val CYAN = Color.valueOf("59d8ea")
         private val GOLD = Color.valueOf("ffd278")
         private val RED = Color.valueOf("ff8791")
         private val ORANGE = Color.valueOf("ffba6b")
-        private val ICE = Color.valueOf("a8bfff")
     }
 }
