@@ -6,6 +6,8 @@ import java.util.Collections
 class GameSimulation(
     val battleMap: BattleMap = BattleMap.CORRIDOR,
     val difficulty: Difficulty = Difficulty.NORMAL,
+    val seed: Int? = null,
+    val fieldRank: Int = 1,
 ) {
     val path: List<Waypoint> = battleMap.path
     private val mutableEnemies = mutableListOf<Enemy>()
@@ -27,6 +29,7 @@ class GameSimulation(
     var leakedEnemies = 0
         private set
     val totalWaves = TOTAL_WAVES
+    private val waves = List(totalWaves) { Waves.plan(it + 1, seed) }
     var state = GameState.PREPARING
         private set
     var remainingToSpawn = 0
@@ -46,7 +49,7 @@ class GameSimulation(
 
         if (remainingToSpawn > 0 && tick >= nextSpawnTick) {
             spawnEnemy()
-            nextSpawnTick = tick + spawnIntervalTicks(wave)
+            nextSpawnTick = tick + waves[wave - 1].intervals[spawnedThisWave - 1]
         }
         for (enemy in mutableEnemies) enemy.update(STEP_SECONDS)
         collectDefeatedEnemies()
@@ -92,14 +95,17 @@ class GameSimulation(
         wave++
         echo.startWave(tick)
         spawnedThisWave = 0
-        remainingToSpawn = enemyCount(wave)
+        remainingToSpawn = waves[wave - 1].enemies.size
         nextSpawnTick = tick + 1L
         state = GameState.RUNNING
         return ActionResult(true, "Wave $wave incoming")
     }
 
+    fun isUnlocked(type: TowerType): Boolean = fieldRank >= type.requiredRank
+
     fun buildTower(type: TowerType, x: Double, y: Double): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to build again")
+        if (!isUnlocked(type)) return ActionResult(false, "${type.title} unlocks at field rank ${type.requiredRank}")
         placementError(x, y)?.let { return ActionResult(false, it) }
         if (gold < type.cost) return ActionResult(false, "Need ${type.cost} gold for ${type.title}")
         val tower = Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks, nextTowerId++, type)
@@ -162,8 +168,7 @@ class GameSimulation(
 
     fun waveDescription(waveNumber: Int): String {
         require(waveNumber in 1..totalWaves)
-        val counts = (0 until enemyCount(waveNumber)).groupingBy { enemyType(waveNumber, it) }.eachCount()
-        return EnemyType.entries.mapNotNull { type -> counts[type]?.let { "$it ${type.title}" } }.joinToString(" / ")
+        return waves[waveNumber - 1].description
     }
 
     fun restart() {
@@ -188,7 +193,7 @@ class GameSimulation(
     private fun canManageTowers() = state == GameState.PREPARING || state == GameState.RUNNING
 
     private fun spawnEnemy() {
-        val type = enemyType(wave, spawnedThisWave)
+        val type = waves[wave - 1].enemies[spawnedThisWave]
         val health = type.baseHealth * Waves.healthMultiplier(wave) * difficulty.healthMultiplier
         mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type)
         spawnedThisWave++

@@ -144,6 +144,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             BattleMap.CORRIDOR -> DEFENSE_PALETTE
             BattleMap.SWITCHBACK -> RELAY_PALETTE
             BattleMap.CROSSWIND -> CROSSWIND_PALETTE
+            BattleMap.TWIN_LOCKS -> LOCKS_PALETTE
         }
         shapes.color = palette.background
         shapes.rect(0f, 0f, WIDTH, HEIGHT)
@@ -338,6 +339,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                     shapes.rectLine(x + cos(a) * 10f, y + sin(a) * 10f,
                         x + cos(a) * 20f, y + sin(a) * 20f, 5f)
                 }
+            }
+            TowerType.TREMOR -> {
+                ring(x, y, 15f, 3f, color)
+                hexagon(x, y, 9f)
+                shapes.color = PANEL
+                diamond(x, y, 6f)
+                shapes.color = color
+                shapes.rectLine(x, y, x + dx * 21f, y + dy * 21f, 6f)
             }
             TowerType.SUNDER -> {
                 hexagon(x, y, 10f)
@@ -551,6 +560,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 TowerType.RAIL -> 4f + age * 13f
                 TowerType.BEACON -> 8f + age * 10f
                 TowerType.SUNDER -> 6f + age * 13f
+                TowerType.TREMOR -> 6f + age * (Tower.TREMOR_RADIUS.toFloat() - 6f)
                 else -> 3f + age * 9f
             }
             ring(toX, toY, radius, 2f * opacity + 0.5f, color, opacity)
@@ -587,6 +597,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             BattleMap.CORRIDOR -> "DEFENSE GRID"
             BattleMap.SWITCHBACK -> "RELAY GRID"
             BattleMap.CROSSWIND -> "CROSSWIND RIDGE"
+            BattleMap.TWIN_LOCKS -> "FLOOD CONTROL GRID"
         }
         font.draw(batch, "BRE / $gridName", 32f, 490f)
         font = fonts.get(0.75f)
@@ -718,6 +729,10 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             Color.valueOf("101923"), Color.valueOf("182837"), Color.valueOf("294253"),
             Color.valueOf("476678"), Color.valueOf("293d4d"), Color.valueOf("314a5a"), Color.valueOf("71939d"),
         )
+        val LOCKS_PALETTE = BoardPalette(
+            Color.valueOf("171326"), Color.valueOf("201b32"), Color.valueOf("3e325b"),
+            Color.valueOf("6d5d91"), Color.valueOf("38304f"), Color.valueOf("473c63"), Color.valueOf("9278bd"),
+        )
         val RELAY_TRIM = Color.valueOf("6b5b32")
         val SHADOW = Color(0.005f, 0.009f, 0.02f, 0.75f)
         val CYAN = Color.valueOf("59d8ea")
@@ -742,6 +757,7 @@ private val towerColors = mapOf(
     TowerType.INFERNO to Color.valueOf("ff775c"),
     TowerType.BEACON to Color.valueOf("f69bd6"),
     TowerType.SUNDER to Color.valueOf("6df7c6"),
+    TowerType.TREMOR to Color.valueOf("f3a775"),
 )
 
 internal fun towerColor(type: TowerType): Color = towerColors.getValue(type)

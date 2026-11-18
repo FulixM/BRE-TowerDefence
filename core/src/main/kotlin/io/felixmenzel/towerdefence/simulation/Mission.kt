@@ -40,6 +40,19 @@ enum class BattleMap(val title: String, path: List<Waypoint>) {
             Waypoint(650.0, 145.0),
             Waypoint(850.0, 145.0),
         ),
+    ),
+    TWIN_LOCKS(
+        "Twin Locks",
+        listOf(
+            Waypoint(50.0, 300.0),
+            Waypoint(220.0, 300.0),
+            Waypoint(220.0, 145.0),
+            Waypoint(425.0, 145.0),
+            Waypoint(425.0, 295.0),
+            Waypoint(650.0, 295.0),
+            Waypoint(650.0, 440.0),
+            Waypoint(850.0, 440.0),
+        ),
     );
 
     /** Neither callers nor a mutable constructor argument can alter a mission during play. */

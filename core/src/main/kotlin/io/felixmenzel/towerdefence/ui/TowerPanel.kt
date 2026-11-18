@@ -28,7 +28,8 @@ internal fun HudCanvas.drawTowerPanel(
     for ((index, type) in TowerType.entries.withIndex()) {
         val x = 922f + (index % 2) * 130f
         val y = 552f - (index / 2) * 43f
-        towerCard(type, index + 1, x, y, simulation.gold, buildType == type, choose)
+        val key = (index + 1) % 10
+        towerCard(type, key, x, y, simulation.gold, simulation.isUnlocked(type), buildType == type, choose)
     }
     button("Enemies [G]", 922f, 330f, 124f, 32f, scale = 0.8f) { openEnemyGuide() }
     val armed = tower != null && simulation.echo.armedTowerId == tower.id
@@ -51,12 +52,14 @@ internal fun HudCanvas.drawTowerPanel(
 }
 
 private fun HudCanvas.towerCard(
-    type: TowerType, key: Int, x: Float, y: Float, gold: Int, selected: Boolean, choose: (TowerType) -> Unit,
+    type: TowerType, key: Int, x: Float, y: Float, gold: Int, unlocked: Boolean,
+    selected: Boolean, choose: (TowerType) -> Unit,
 ) {
     val accent = towerColor(type)
-    button("[$key] ${type.title}", x, y, 124f, 38f, accent = accent, scale = 0.84f,
+    button("[$key] ${type.title}", x, y, 124f, 38f, enabled = unlocked, accent = accent, scale = 0.84f,
         selected = selected, labelOffsetY = 7f) { choose(type) }
-    text("${type.cost}g", x + 12f, y + 13f, 0.70f, if (gold >= type.cost) GOLD else MUTED)
+    val info = if (unlocked) "${type.cost}g" else "Rank ${type.requiredRank}"
+    text(info, x + 12f, y + 13f, 0.70f, if (unlocked && gold >= type.cost) GOLD else MUTED)
 }
 
 private fun HudCanvas.buildPanel(type: TowerType, cancelPlacement: () -> Unit) {
