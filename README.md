@@ -1,6 +1,6 @@
 # BRE Tower Defence
 
-A Kotlin/libGDX tower-defense game: build a defence along either of two routes and protect the core through ten increasingly difficult waves. The simulation runs at a fixed 60 updates per second, independently of rendering.
+A Kotlin/libGDX tower-defense game. Build a defence beside the route and protect the core through increasingly difficult waves.
 
 ![Actual first-mission gameplay](docs/screenshots/first-mission.png)
 
@@ -16,33 +16,15 @@ On Windows use `gradlew.bat lwjgl3:run`. Build a runnable desktop JAR with `./gr
 
 ## Play
 
-The game opens on The Corridor at Normal difficulty. Use **Mission** to choose a route and difficulty. The Corridor has a long central lane and two approaches to its bends. Switchback adds a return bend, so tower positions can cover different stretches of the route.
+Use **Mission** to choose a route and difficulty. The mission screen previews the route, starting resources and enemy health. Place towers on free ground beside the route. Select a tower to see its stats, preview its next upgrade, change its target priority or sell it.
 
-| Difficulty | Starting gold | Base lives | Enemy health |
-| --- | ---: | ---: | ---: |
-| Relaxed | 260 | 30 | 80% |
-| Normal | 220 | 20 | 100% |
-| Veteran | 180 | 12 | 125% |
-
-Choose a tower in the sidebar and click free ground beside the route. The preview shows range and whether placement is valid. Build at bends to cover several route segments. Select a placed tower to inspect its damage, fire rate and range, preview and buy either of its two upgrade levels, change its target priority, or sell it for 65% of its total investment. First targets the enemy furthest along the route, Strongest targets the one with the most remaining health, and Nearest targets the closest enemy. The result screen shows how many enemies your towers defeated and how many reached the core.
-
-| Tower | Cost | Role |
-| --- | ---: | --- |
-| Pulse | 75 | Rapid single-target damage |
-| Cannon | 120 | Splash damage against groups |
-| Frost | 90 | Slows targets by 45% so other towers have more time |
-| Rail | 140 | Long-range shot that ignores armor |
-| Arc | 125 | Lightning jumps to two nearby enemies with falling damage |
-| Venom | 100 | Poisons an enemy for three seconds |
-| Inferno | 110 | Hits every enemy in its short range |
-| Beacon | 85 | Marks an enemy for 2.5 seconds so it takes 25% more damage |
-
-Start each wave when ready; there is no preparation timer. Killing enemies earns gold, clearing a wave grants a bonus, and each enemy reaching the core costs one life. Drifters arrive first, followed by Runners and Bulwarks. Ironclads reduce damage unless hit by Rail, Wardens absorb damage with shields, and Reavers regain health if left alone. Press **G** to open the enemy guide and see when each type arrives. Inspect the next wave in the bottom bar. Survive wave 10 to win; zero lives ends the mission. Building and upgrading remain available during waves. Damage resolves instantly; shot traces and impact rings provide visual feedback.
+Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive all waves to win.
 
 | Input | Action |
 | --- | --- |
 | Mouse | Choose/build/select towers and use HUD buttons |
 | 1–8 | Choose a tower in catalogue order |
+| M | Open mission setup |
 | G | Read the enemy guide and pause the current wave |
 | E | Arm or disarm the selected tower as the wave recorder |
 | U | Upgrade selected tower |
@@ -53,18 +35,20 @@ Start each wave when ready; there is no preparation timer. Killing enemies earns
 | Right-click / Esc | Cancel placement or selection; Esc otherwise pauses |
 | R | Request restart; confirm with Enter/R or cancel with Esc |
 
-Before starting a wave, select one tower and use **Record [E]**. Its shots replay automatically in the following wave, at the same time offsets and positions, even if the tower has been sold. Echo hits deal half damage and retain armor piercing and status effects. Single impacts and Arc jumps hit nearby enemies within 12 units of the recorded points, while Cannon and Inferno keep their area of effect. Enemies can move past a point before the echo fires. Purple rings show the echo source and upcoming impact. Arm a recorder again to prepare an echo for another wave.
-
-The window scales with a FitViewport and ignores clicks in letterboxing. Text is rasterized from the bundled DejaVu Sans font at the current framebuffer resolution, including HiDPI scaling; it is regenerated when the viewport density changes. Towers, gates and effects use four-sample antialiasing when available, with a supersampled battlefield fallback when the window system cannot provide it. Text stays at native resolution. Losing application focus pauses the game.
+Before starting a wave, select a tower and use **Record [E]**. Its shots replay at the same times and positions in the next wave, even if you sell the tower. Enemies can move past a point before the echo fires. Purple rings mark upcoming impacts.
 
 ## Verify
 
-```sh
-./gradlew build test
-./gradlew lwjgl3:smokeTest
-```
+Run the test closest to the change.
 
-The first command runs the simulation and campaign-balance tests. The second needs a graphical display and exercises actual rendering, input, mission selection, tower management, pause, restart and viewport scaling. On Linux CI use `xvfb-run -a ./gradlew lwjgl3:smokeTest`; the screenshot is written to `lwjgl3/build/reports/desktop-smoke.png`. CI runs both checks and uploads available diagnostics on failure.
+| Change | Command |
+| --- | --- |
+| Wave echo | `./gradlew --quiet --console=plain :core:test --tests '*WaveEchoTest'` |
+| Campaign balance | `./gradlew --quiet --console=plain :core:test --tests '*BalanceSimulationTest'` |
+| HUD, input or rendering | `./gradlew --quiet --console=plain :lwjgl3:smokeTest` |
+| Full build and tests | `./gradlew --quiet --console=plain build` |
+
+The desktop smoke test needs a display. On headless Linux, prefix the command with `xvfb-run -a`. The screenshot is written to `lwjgl3/build/reports/desktop-smoke.png`. PR CI runs the full build and the desktop smoke test, and uploads available diagnostics on failure.
 
 ## Structure
 
@@ -74,6 +58,4 @@ The first command runs the simulation and campaign-balance tests. The second nee
 - `lwjgl3`: desktop launcher, packaging and rendered smoke check.
 - `assets`: original template graphics retained; procedural battlefield art and a bundled, openly licensed DejaVu Sans Latin font (license in `assets/fonts/LICENSE.txt`). No runtime asset downloads.
 
-Design choices and the next priorities are in [game-design.md](docs/game-design.md). Tower values, difficulty rules and automated campaign results are in [balance.md](docs/balance.md). Missions are independent sessions.
-
-Executed checks, limitations and team contributions are recorded in [verification.md](docs/verification.md).
+See [AGENTS.md](AGENTS.md) for entry points, [game-design.md](docs/game-design.md) for design decisions, [balance.md](docs/balance.md) for campaign probes, and [verification.md](docs/verification.md) for first-mission verification.

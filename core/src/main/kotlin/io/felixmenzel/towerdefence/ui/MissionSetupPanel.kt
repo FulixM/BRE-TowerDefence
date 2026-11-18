@@ -1,0 +1,51 @@
+package io.felixmenzel.towerdefence.ui
+
+import io.felixmenzel.towerdefence.simulation.BattleMap
+import io.felixmenzel.towerdefence.simulation.Difficulty
+import io.felixmenzel.towerdefence.simulation.GameSimulation.Companion.TOTAL_WAVES
+import io.felixmenzel.towerdefence.ui.DefenseScreen.Companion.BOARD_HEIGHT
+import io.felixmenzel.towerdefence.ui.DefenseScreen.Companion.BOARD_WIDTH
+import io.felixmenzel.towerdefence.ui.HudPalette.BACKGROUND
+import io.felixmenzel.towerdefence.ui.HudPalette.BORDER
+import io.felixmenzel.towerdefence.ui.HudPalette.CYAN
+import io.felixmenzel.towerdefence.ui.HudPalette.MUTED
+import io.felixmenzel.towerdefence.ui.HudPalette.OVERLAY
+import io.felixmenzel.towerdefence.ui.HudPalette.WHITE
+
+internal fun HudCanvas.drawMissionSetup(
+    pendingMap: BattleMap,
+    pendingDifficulty: Difficulty,
+    selectMap: (BattleMap) -> Unit,
+    selectDifficulty: (Difficulty) -> Unit,
+    launch: () -> Unit,
+    cancel: () -> Unit,
+) {
+    rect(140f, 125f, 720f, 470f, OVERLAY)
+    rect(140f, 591f, 720f, 4f, CYAN)
+    text("MISSION SETUP", 182f, 559f, 1.65f, WHITE)
+    text("Choose a route and challenge. $TOTAL_WAVES waves stand between you and victory.", 182f, 524f, 0.9f, MUTED, 636f)
+    for ((index, map) in BattleMap.entries.withIndex()) {
+        val x = 182f + index * 320f
+        rect(x, 345f, 300f, 145f, BACKGROUND)
+        button(map.title, x, 440f, 300f, 42f,
+            accent = if (pendingMap == map) CYAN else BORDER) { selectMap(map) }
+        // Draw the preview from the mission route.
+        val routeColor = if (pendingMap == map) CYAN else BORDER
+        for ((from, to) in map.path.zipWithNext()) {
+            line(x + 15f + from.x.toFloat() / BOARD_WIDTH * 270f,
+                354f + from.y.toFloat() / BOARD_HEIGHT * 72f,
+                x + 15f + to.x.toFloat() / BOARD_WIDTH * 270f,
+                354f + to.y.toFloat() / BOARD_HEIGHT * 72f, 3f, routeColor)
+        }
+    }
+    text("DIFFICULTY", 182f, 320f, 0.95f, WHITE)
+    for ((index, difficulty) in Difficulty.entries.withIndex()) {
+        button(difficulty.title, 182f + index * 212f, 254f, 196f, 42f,
+            accent = if (pendingDifficulty == difficulty) CYAN else BORDER) { selectDifficulty(difficulty) }
+    }
+    text("${pendingDifficulty.startingGold} gold / ${pendingDifficulty.startingLives} base lives / Enemy health ${pendingDifficulty.healthMultiplier}x",
+        182f, 236f, 0.88f, CYAN, 636f)
+    text("Launch starts a fresh defence. Cancel keeps your current mission.", 182f, 220f, 0.82f, MUTED, 636f)
+    button("Launch mission [Enter]", 182f, 160f, 300f, 48f, accent = CYAN) { launch() }
+    button("Cancel [Esc]", 502f, 160f, 300f, 48f) { cancel() }
+}
