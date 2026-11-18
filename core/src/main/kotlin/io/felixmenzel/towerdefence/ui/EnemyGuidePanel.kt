@@ -12,7 +12,7 @@ internal fun HudCanvas.drawEnemyGuide(close: () -> Unit) {
     rect(140f, 582f, 720f, 4f, CYAN)
     text("ENEMY GUIDE", 182f, 550f, 1.65f, WHITE)
     for ((index, type) in EnemyType.entries.withIndex()) {
-        val y = 493f - index * 46f
+        val y = 493f - index * 38f
         val color = when {
             type.damageMultiplier < 1.0 -> EnemyDefenseColors.ARMOR
             type.shieldFraction > 0.0 -> EnemyDefenseColors.SHIELD

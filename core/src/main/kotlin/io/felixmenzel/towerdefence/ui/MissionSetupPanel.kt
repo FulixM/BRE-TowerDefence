@@ -24,17 +24,19 @@ internal fun HudCanvas.drawMissionSetup(
     rect(140f, 591f, 720f, 4f, CYAN)
     text("MISSION SETUP", 182f, 559f, 1.65f, WHITE)
     text("Choose a route and challenge. $TOTAL_WAVES waves stand between you and victory.", 182f, 524f, 0.9f, MUTED, 636f)
+    val mapGap = 12f
+    val mapWidth = (636f - mapGap * (BattleMap.entries.size - 1)) / BattleMap.entries.size
     for ((index, map) in BattleMap.entries.withIndex()) {
-        val x = 182f + index * 320f
-        rect(x, 345f, 300f, 145f, BACKGROUND)
-        button(map.title, x, 440f, 300f, 42f,
+        val x = 182f + index * (mapWidth + mapGap)
+        rect(x, 345f, mapWidth, 145f, BACKGROUND)
+        button(map.title, x, 440f, mapWidth, 42f,
             accent = if (pendingMap == map) CYAN else BORDER) { selectMap(map) }
         // Draw the preview from the mission route.
         val routeColor = if (pendingMap == map) CYAN else BORDER
         for ((from, to) in map.path.zipWithNext()) {
-            line(x + 15f + from.x.toFloat() / BOARD_WIDTH * 270f,
+            line(x + 15f + from.x.toFloat() / BOARD_WIDTH * (mapWidth - 30f),
                 354f + from.y.toFloat() / BOARD_HEIGHT * 72f,
-                x + 15f + to.x.toFloat() / BOARD_WIDTH * 270f,
+                x + 15f + to.x.toFloat() / BOARD_WIDTH * (mapWidth - 30f),
                 354f + to.y.toFloat() / BOARD_HEIGHT * 72f, 3f, routeColor)
         }
     }

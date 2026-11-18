@@ -145,6 +145,7 @@ enum class TowerType(
     VENOM("Venom", 100, "Poisons for 3s. Strongest dose wins.", 145.0, 11.0, 60L),
     INFERNO("Inferno", 110, "Hits every enemy in its short reach", 84.0, 12.0, 24L),
     BEACON("Beacon", 85, "Marks a target for 25% more damage", 150.0, 8.0, 56L),
+    SUNDER("Sunder", 115, "Deals triple damage to shields", 145.0, 22.0, 36L),
 }
 
 /** A visual trace of an already resolved hit, not a second source of damage. */
@@ -174,7 +175,8 @@ private val ARC_DAMAGE_FACTORS = doubleArrayOf(1.0, 0.65, 0.4)
 
 internal fun applyTowerHit(type: TowerType, enemy: Enemy, damage: Double, impactIndex: Int = 0) {
     val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
-    enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
+    if (type == TowerType.SUNDER) enemy.takeShieldbreakingDamage(damage)
+    else enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
     if (!enemy.isAlive) return
     when (type) {
         TowerType.FROST -> enemy.applySlow(0.55, 1.5)

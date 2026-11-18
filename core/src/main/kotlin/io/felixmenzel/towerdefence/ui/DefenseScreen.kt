@@ -139,8 +139,8 @@ class DefenseScreen : KtxScreen {
 
     private fun towerShortcut(keycode: Int): TowerType? {
         val index = when (keycode) {
-            in Input.Keys.NUM_1..Input.Keys.NUM_8 -> keycode - Input.Keys.NUM_1
-            in Input.Keys.NUMPAD_1..Input.Keys.NUMPAD_8 -> keycode - Input.Keys.NUMPAD_1
+            in Input.Keys.NUM_1..Input.Keys.NUM_9 -> keycode - Input.Keys.NUM_1
+            in Input.Keys.NUMPAD_1..Input.Keys.NUMPAD_9 -> keycode - Input.Keys.NUMPAD_1
             else -> return null
         }
         return TowerType.entries.getOrNull(index)
@@ -331,7 +331,7 @@ class DefenseScreen : KtxScreen {
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
         button(nextLabel, 565f, 20f, 310f, 43f, preparing, CYAN) { report(simulation.startWave()) }
-        text("1-8 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
+        text("1-9 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
         text("Space Wave/Pause   P Pause   F Speed", 922f, 36f, 0.75f, MUTED)
 
         // Feedback sits inside the board's unused upper margin, without hiding the route.

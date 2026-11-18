@@ -6,6 +6,7 @@ import io.felixmenzel.towerdefence.simulation.EnemyType.NORMAL
 import io.felixmenzel.towerdefence.simulation.EnemyType.PLATED
 import io.felixmenzel.towerdefence.simulation.EnemyType.REGENERATING
 import io.felixmenzel.towerdefence.simulation.EnemyType.SHIELDED
+import io.felixmenzel.towerdefence.simulation.EnemyType.VANGUARD
 import kotlin.math.roundToInt
 
 internal object Waves {
@@ -22,8 +23,8 @@ internal object Waves {
         Assault("Shield rush", 27, 5, listOf(SHIELDED, FAST, FAST, NORMAL, SHIELDED, FAST)),
         Assault("Armored column", 27, 5, listOf(ARMORED, PLATED, PLATED, NORMAL, ARMORED, FAST)),
         Assault("Reaver packs", 25, 4, listOf(REGENERATING, FAST, REGENERATING, NORMAL, FAST, REGENERATING, SHIELDED, FAST)),
-        Assault("Siege line", 25, 4, listOf(SHIELDED, PLATED, ARMORED, FAST, SHIELDED, PLATED, REGENERATING, PLATED)),
-        Assault("Final assault", 24, 4, listOf(ARMORED, SHIELDED, PLATED, FAST, REGENERATING, NORMAL, SHIELDED, PLATED, FAST)),
+        Assault("Siege line", 25, 4, listOf(SHIELDED, PLATED, ARMORED, FAST, SHIELDED, PLATED, REGENERATING, VANGUARD)),
+        Assault("Final assault", 24, 4, listOf(ARMORED, SHIELDED, PLATED, FAST, REGENERATING, NORMAL, VANGUARD, PLATED, FAST)),
     )
 
     val total: Int = OPENING_WAVES + lateWaves.size
