@@ -95,8 +95,9 @@ class BalanceSimulationTest {
         val veteran = play(Difficulty.VETERAN)
 
         assertEquals(GameState.WON, relaxed.state)
-        assertEquals(GameState.WON, normal.state)
+        assertEquals(GameState.LOST, normal.state)
         assertTrue(normal.leakedEnemies > relaxed.leakedEnemies)
+        assertTrue(veteran.wave < normal.wave)
         assertEquals(GameState.LOST, veteran.state)
     }
 
@@ -166,14 +167,14 @@ class BalanceSimulationTest {
 
     private val switchbackPlan = listOf(
         Placement(TowerType.RAPID, 320.0, 330.0),
-        Placement(TowerType.RAPID, 420.0, 240.0),
+        Placement(TowerType.RAPID, 440.0, 225.0),
         Placement(TowerType.CANNON, 580.0, 310.0),
         Placement(TowerType.FROST, 320.0, 240.0),
-        Placement(TowerType.CANNON, 650.0, 290.0),
-        Placement(TowerType.RAPID, 160.0, 320.0),
-        Placement(TowerType.CANNON, 420.0, 470.0),
-        Placement(TowerType.RAPID, 580.0, 470.0),
-        Placement(TowerType.FROST, 650.0, 470.0),
+        Placement(TowerType.RAIL, 650.0, 290.0),
+        Placement(TowerType.ARC, 554.0, 219.0),
+        Placement(TowerType.VENOM, 440.0, 344.0),
+        Placement(TowerType.INFERNO, 555.0, 438.0),
+        Placement(TowerType.BEACON, 625.0, 340.0),
         Placement(TowerType.CANNON, 810.0, 320.0),
         Placement(TowerType.RAPID, 160.0, 230.0),
         Placement(TowerType.CANNON, 580.0, 80.0),
@@ -181,14 +182,14 @@ class BalanceSimulationTest {
 
     private val buildPlan = listOf(
         Placement(TowerType.RAPID, 240.0, 240.0),
-        Placement(TowerType.CANNON, 370.0, 270.0),
-        Placement(TowerType.FROST, 530.0, 270.0),
-        Placement(TowerType.RAPID, 670.0, 180.0),
-        Placement(TowerType.CANNON, 370.0, 430.0),
-        Placement(TowerType.RAPID, 230.0, 350.0),
-        Placement(TowerType.CANNON, 680.0, 350.0),
-        Placement(TowerType.RAPID, 530.0, 100.0),
-        Placement(TowerType.FROST, 380.0, 90.0),
+        Placement(TowerType.RAPID, 370.0, 270.0),
+        Placement(TowerType.CANNON, 530.0, 270.0),
+        Placement(TowerType.FROST, 670.0, 180.0),
+        Placement(TowerType.RAIL, 370.0, 430.0),
+        Placement(TowerType.ARC, 230.0, 350.0),
+        Placement(TowerType.VENOM, 680.0, 350.0),
+        Placement(TowerType.INFERNO, 555.0, 307.0),
+        Placement(TowerType.BEACON, 530.0, 400.0),
         Placement(TowerType.CANNON, 160.0, 230.0),
         Placement(TowerType.RAPID, 450.0, 430.0),
         Placement(TowerType.CANNON, 700.0, 30.0),

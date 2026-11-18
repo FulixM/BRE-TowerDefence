@@ -31,13 +31,19 @@ Choose a tower in the sidebar and click free ground beside the route. The previe
 | Pulse | 75 | Rapid single-target damage |
 | Cannon | 120 | Splash damage against groups |
 | Frost | 90 | Slows targets by 45% so other towers have more time |
+| Rail | 140 | Long-range shot that ignores armor |
+| Arc | 125 | Lightning jumps to two nearby enemies with falling damage |
+| Venom | 100 | Poisons an enemy for three seconds |
+| Inferno | 110 | Hits every enemy in its short range |
+| Beacon | 85 | Marks an enemy for 2.5 seconds so it takes 25% more damage |
 
-Start each wave when ready; there is no preparation timer. Killing enemies earns gold, clearing a wave grants a bonus, and each enemy reaching the core costs one life. Drifters arrive first, Runners join in wave 3, and high-health Bulwarks in wave 5. Inspect the next wave in the bottom bar. Survive wave 10 to win; zero lives ends the mission. Building and upgrading remain available during waves. Damage resolves instantly; shot traces and impact rings provide visual feedback.
+Start each wave when ready; there is no preparation timer. Killing enemies earns gold, clearing a wave grants a bonus, and each enemy reaching the core costs one life. Drifters arrive first, followed by Runners and Bulwarks. Ironclads reduce damage unless hit by Rail, Wardens absorb damage with shields, and Reavers regain health if left alone. Press **G** to open the enemy guide and see when each type arrives. Inspect the next wave in the bottom bar. Survive wave 10 to win; zero lives ends the mission. Building and upgrading remain available during waves. Damage resolves instantly; shot traces and impact rings provide visual feedback.
 
 | Input | Action |
 | --- | --- |
 | Mouse | Choose/build/select towers and use HUD buttons |
-| 1 / 2 / 3 | Choose Pulse / Cannon / Frost |
+| 1–8 | Choose a tower in catalogue order |
+| G | Read the enemy guide and pause the current wave |
 | U | Upgrade selected tower |
 | T | Cycle the selected tower’s target priority |
 | Space | Start the next wave; pause/resume during combat |

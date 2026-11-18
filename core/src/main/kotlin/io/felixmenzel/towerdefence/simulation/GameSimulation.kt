@@ -49,12 +49,13 @@ class GameSimulation(
             nextSpawnTick = tick + spawnIntervalTicks(wave)
         }
         for (enemy in mutableEnemies) enemy.update(STEP_SECONDS)
+        collectDefeatedEnemies()
         // A leak is resolved before towers fire: reaching the exit is definitive.
-        val escaped = mutableEnemies.count { it.hasReachedGoal }
+        val escaped = mutableEnemies.count { it.isAlive && it.hasReachedGoal }
         if (escaped > 0) {
             leakedEnemies += escaped
             lives = (lives - escaped).coerceAtLeast(0)
-            mutableEnemies.removeAll { it.hasReachedGoal }
+            mutableEnemies.removeAll { it.isAlive && it.hasReachedGoal }
         }
         if (lives == 0) {
             state = GameState.LOST
@@ -65,13 +66,19 @@ class GameSimulation(
         for (tower in mutableTowers) {
             tower.update(tick, mutableEnemies)?.let(mutableShots::add)
         }
-        val defeated = mutableEnemies.filter { !it.isAlive }
-        kills += defeated.size
-        gold += defeated.sumOf { it.bounty }
-        mutableEnemies.removeAll { !it.isAlive }
+        collectDefeatedEnemies()
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
             state = if (wave == totalWaves) GameState.WON else GameState.PREPARING
+        }
+    }
+
+    private fun collectDefeatedEnemies() {
+        mutableEnemies.removeAll { enemy ->
+            if (enemy.isAlive) return@removeAll false
+            kills++
+            gold += enemy.bounty
+            true
         }
     }
 
@@ -186,8 +193,11 @@ class GameSimulation(
         fun enemyCount(wave: Int): Int = 8 + (wave - 1) * 2
         fun spawnIntervalTicks(wave: Int): Long = ((0.85 - (wave - 1) * 0.045).coerceAtLeast(0.45) * UPS).roundToInt().toLong()
         fun enemyType(wave: Int, index: Int): EnemyType = when {
-            wave >= 5 && index % 5 == 4 -> EnemyType.ARMORED
-            wave >= 3 && index % 3 == 2 -> EnemyType.FAST
+            wave >= EnemyType.REGENERATING.firstWave && index % 9 == 7 -> EnemyType.REGENERATING
+            wave >= EnemyType.SHIELDED.firstWave && index % 7 == 5 -> EnemyType.SHIELDED
+            wave >= EnemyType.PLATED.firstWave && index % 7 == 3 -> EnemyType.PLATED
+            wave >= EnemyType.ARMORED.firstWave && index % 5 == 4 -> EnemyType.ARMORED
+            wave >= EnemyType.FAST.firstWave && index % 3 == 2 -> EnemyType.FAST
             else -> EnemyType.NORMAL
         }
 

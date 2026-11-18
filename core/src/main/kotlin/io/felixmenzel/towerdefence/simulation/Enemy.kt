@@ -39,12 +39,30 @@ class Enemy(
     var slowFactor = 1.0
         private set
     private var slowSeconds = 0.0
+    var shield = maxHealth * type.shieldFraction
+        private set
+    var markedSeconds = 0.0
+        private set
+    val isPoisoned: Boolean get() = poisonSeconds > 0.0
+    private var poisonSeconds = 0.0
+    private var poisonPerSecond = 0.0
+    private var recoveryDelay = 0.0
 
     fun update(stepSeconds: Double) {
         require(stepSeconds.isFinite() && stepSeconds >= 0.0)
         previousX = x
         previousY = y
         if (!isAlive || hasReachedGoal) return
+
+        if (poisonSeconds > 0.0) {
+            takeDamage(poisonPerSecond * min(stepSeconds, poisonSeconds))
+            poisonSeconds = (poisonSeconds - stepSeconds).coerceAtLeast(0.0)
+            if (!isAlive) return
+        }
+        val recoverySeconds = (stepSeconds - recoveryDelay).coerceAtLeast(0.0)
+        recoveryDelay = (recoveryDelay - stepSeconds).coerceAtLeast(0.0)
+        health = (health + maxHealth * type.regenerationFraction * recoverySeconds).coerceAtMost(maxHealth)
+        markedSeconds = (markedSeconds - stepSeconds).coerceAtLeast(0.0)
 
         // Only the portion of this step still covered by the slow uses reduced speed.
         val slowedSeconds = min(stepSeconds, slowSeconds)
@@ -72,9 +90,15 @@ class Enemy(
         }
     }
 
-    fun takeDamage(damage: Double) {
+    fun takeDamage(damage: Double, piercesArmor: Boolean = false) {
         require(damage.isFinite() && damage >= 0.0) { "Damage must be finite and non-negative" }
-        health = (health - damage).coerceAtLeast(0.0)
+        if (damage == 0.0 || !isAlive) return
+        recoveryDelay = 1.5
+        val incoming = damage * (if (markedSeconds > 0.0) 1.25 else 1.0) *
+            (if (piercesArmor) 1.0 else type.damageMultiplier)
+        val absorbed = min(shield, incoming)
+        shield -= absorbed
+        health = (health - (incoming - absorbed)).coerceAtLeast(0.0)
     }
 
     /** Slows never multiply; repeated shots refresh the strongest active slow. */
@@ -86,13 +110,31 @@ class Enemy(
         slowSeconds = maxOf(slowSeconds, durationSeconds)
     }
 
+    internal fun applyPoison(damagePerSecond: Double, durationSeconds: Double) {
+        if (poisonSeconds == 0.0 || damagePerSecond >= poisonPerSecond) {
+            poisonPerSecond = damagePerSecond
+            poisonSeconds = durationSeconds
+        }
+    }
+
+    internal fun mark() {
+        markedSeconds = 2.5
+    }
+
     fun interpolatedX(alpha: Double): Double = previousX + (x - previousX) * alpha.coerceIn(0.0, 1.0)
     fun interpolatedY(alpha: Double): Double = previousY + (y - previousY) * alpha.coerceIn(0.0, 1.0)
 }
 
-enum class EnemyType(val title: String, val baseHealth: Double, val baseSpeed: Double, val bounty: Int) {
-    NORMAL("Drifter", 80.0, 50.0, 9),
-    FAST("Runner", 55.0, 86.0, 10),
+enum class EnemyType(
+    val title: String, val baseHealth: Double, val baseSpeed: Double, val bounty: Int,
+    val firstWave: Int, val description: String,
+    val damageMultiplier: Double = 1.0, val shieldFraction: Double = 0.0, val regenerationFraction: Double = 0.0,
+) {
+    NORMAL("Drifter", 80.0, 50.0, 9, 1, "Standard enemy"),
+    FAST("Runner", 55.0, 86.0, 10, 3, "Fast with low health"),
     // This is a high-health enemy, not a damage-resistance mechanic.
-    ARMORED("Bulwark", 190.0, 36.0, 16),
+    ARMORED("Bulwark", 190.0, 36.0, 16, 5, "Slow with high health"),
+    PLATED("Ironclad", 73.0, 43.0, 15, 6, "Takes 40% less damage. Rail ignores armor.", damageMultiplier = 0.6),
+    SHIELDED("Warden", 74.0, 49.0, 15, 7, "Shield absorbs damage before health.", shieldFraction = 0.45),
+    REGENERATING("Reaver", 95.0, 56.0, 16, 8, "Heals after 1.5s without damage. Keep it under fire.", regenerationFraction = 0.08),
 }
