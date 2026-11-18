@@ -81,15 +81,7 @@ class Tower(
         }
 
         for ((index, enemy) in hits.withIndex()) {
-            val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[index] else 1.0
-            enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
-            if (!enemy.isAlive) continue
-            when (type) {
-                TowerType.FROST -> enemy.applySlow(0.55, 1.5)
-                TowerType.VENOM -> enemy.applyPoison(damage, 3.0)
-                TowerType.BEACON -> enemy.mark()
-                else -> Unit
-            }
+            applyTowerHit(type, enemy, damage, index)
         }
         val hitEnemyIds = hits.map { it.id }
         nextAttackTick = currentTick + attackIntervalTicks
@@ -133,7 +125,7 @@ class Tower(
         const val MAX_LEVEL = 3
         const val SPLASH_RADIUS = 58.0
         private const val ARC_JUMP_RANGE = 76.0
-        private val ARC_DAMAGE_FACTORS = doubleArrayOf(1.0, 0.65, 0.4)
+
     }
 }
 
@@ -166,6 +158,7 @@ data class Shot(
     val hitEnemyIds: List<Long>,
     val arcJumps: List<Waypoint> = emptyList(),
     val areaRadius: Double = 0.0,
+    val isEcho: Boolean = false,
 )
 
 /** Exact next-level values, calculated by the same rules as the active tower stats. */
@@ -175,4 +168,18 @@ enum class TargetPriority(val title: String) {
     FIRST("First"),
     STRONGEST("Strongest"),
     NEAREST("Nearest"),
+}
+
+private val ARC_DAMAGE_FACTORS = doubleArrayOf(1.0, 0.65, 0.4)
+
+internal fun applyTowerHit(type: TowerType, enemy: Enemy, damage: Double, impactIndex: Int = 0) {
+    val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
+    enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
+    if (!enemy.isAlive) return
+    when (type) {
+        TowerType.FROST -> enemy.applySlow(0.55, 1.5)
+        TowerType.VENOM -> enemy.applyPoison(damage, 3.0)
+        TowerType.BEACON -> enemy.mark()
+        else -> Unit
+    }
 }

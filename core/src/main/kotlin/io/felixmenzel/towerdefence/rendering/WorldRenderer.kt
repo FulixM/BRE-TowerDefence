@@ -119,6 +119,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         selectedTower?.let { drawRange(it.x.toFloat(), it.y.toFloat(), it.range.toFloat(), CYAN) }
         for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
         for (enemy in simulation.enemies) drawEnemy(enemy, simulation, alpha)
+        simulation.echo.nextShot(simulation.state == GameState.PREPARING)?.let { shot ->
+            ring(shot.fromX.toFloat(), shot.fromY.toFloat(), 30f, 1.5f, ECHO, 0.7f)
+            ring(shot.toX.toFloat(), shot.toY.toFloat(), 8f, 1.5f, ECHO, 0.65f)
+        }
+        val recordedTowerId = simulation.echo.recordingTowerId ?: simulation.echo.armedTowerId
+        simulation.towers.firstOrNull { it.id == recordedTowerId }?.let { tower ->
+            ring(tower.x.toFloat(), tower.y.toFloat(), 33f, 2f, ECHO)
+        }
         drawShots(simulation)
         if (buildType != null && cursorX != null && cursorY != null) {
             drawPreview(simulation, buildType, cursorX.toFloat(), cursorY.toFloat())
@@ -453,7 +461,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         for (shot in simulation.shots) {
             val age = (simulation.tick - shot.tick).toFloat().coerceAtLeast(0f) / GameSimulation.SHOT_LIFETIME_TICKS.toFloat()
             if (age >= 1f) continue
-            val color = towerColor(shot.type)
+            val color = if (shot.isEcho) ECHO else towerColor(shot.type)
             val fromX = shot.fromX.toFloat()
             val fromY = shot.fromY.toFloat()
             val toX = shot.toX.toFloat()
@@ -667,4 +675,5 @@ private val towerColors = mapOf(
 
 internal fun towerColor(type: TowerType): Color = towerColors.getValue(type)
 
+private val ECHO = Color.valueOf("c9bbff")
 private val PLATE_COLOR = Color.valueOf("c5d0db")

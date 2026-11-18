@@ -38,6 +38,7 @@ class GameSimulation(
     private var nextTowerId = 1L
     private var spawnedThisWave = 0
     private var nextSpawnTick = 0L
+    internal val echo = WaveEcho()
 
     fun update() {
         tick++
@@ -61,15 +62,20 @@ class GameSimulation(
             state = GameState.LOST
             remainingToSpawn = 0
             mutableShots.clear()
+            echo.reset()
             return
         }
         for (tower in mutableTowers) {
-            tower.update(tick, mutableEnemies)?.let(mutableShots::add)
+            val shot = tower.update(tick, mutableEnemies) ?: continue
+            mutableShots.add(shot)
+            echo.record(tower, shot)
         }
+        echo.replay(tick, mutableEnemies, mutableShots)
         collectDefeatedEnemies()
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
             state = if (wave == totalWaves) GameState.WON else GameState.PREPARING
+            if (state == GameState.WON) echo.reset() else echo.finishWave()
         }
     }
 
@@ -85,6 +91,7 @@ class GameSimulation(
     fun startWave(): ActionResult {
         if (state != GameState.PREPARING) return ActionResult(false, "Finish the current wave first")
         wave++
+        echo.startWave(tick)
         spawnedThisWave = 0
         remainingToSpawn = enemyCount(wave)
         nextSpawnTick = tick + 1L
@@ -119,11 +126,23 @@ class GameSimulation(
         return ActionResult(true, "${tower.type.title} targets ${tower.targetPriority.title.lowercase()}", id)
     }
 
+    fun selectEchoTower(id: Long): ActionResult {
+        if (state != GameState.PREPARING || wave >= totalWaves - 1) {
+            return ActionResult(false, "Choose a recorder before a wave that has a following wave")
+        }
+        val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
+        val armed = echo.toggleTower(tower.id)
+        val message = if (armed) "${tower.type.title} will record wave ${wave + 1} and echo in wave ${wave + 2}"
+            else "Echo recording disarmed"
+        return ActionResult(true, message, id)
+    }
+
     fun sellTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to sell again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         gold += tower.sellValue
         mutableTowers.remove(tower)
+        echo.onTowerSold(id)
         return ActionResult(true, "Sold for ${tower.sellValue} gold")
     }
 
@@ -152,6 +171,7 @@ class GameSimulation(
         mutableEnemies.clear()
         mutableTowers.clear()
         mutableShots.clear()
+        echo.reset()
         tick = 0L
         gold = difficulty.startingGold
         lives = difficulty.startingLives

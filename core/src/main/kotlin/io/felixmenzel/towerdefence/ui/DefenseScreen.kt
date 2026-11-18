@@ -118,6 +118,11 @@ class DefenseScreen : KtxScreen {
             }
             when (keycode) {
                 Input.Keys.G -> enemyGuide = true
+                Input.Keys.E -> if (!paused) {
+                    val tower = selectedTower()
+                    if (tower == null) notify("Select a tower to record its shots", true)
+                    else report(simulation.selectEchoTower(tower.id))
+                }
                 Input.Keys.P -> togglePause()
                 Input.Keys.ESCAPE -> {
                     if (buildType != null || selectedTowerId != null) {
@@ -315,9 +320,15 @@ class DefenseScreen : KtxScreen {
             val y = 550f - (index / 2) * 55f
             towerCard(type, index + 1, x, y)
         }
-        button("enemy-guide", "Enemy guide [G]", 922f, 330f, 254f, 32f) { enemyGuide = true }
-
         val tower = selectedTower()
+        button("enemy-guide", "Enemies [G]", 922f, 330f, 124f, 32f, scale = 0.8f) { enemyGuide = true }
+        val armed = tower != null && simulation.echo.armedTowerId == tower.id
+        button("echo", if (armed) "Armed [E]" else "Record [E]", 1052f, 330f, 124f, 32f,
+            enabled = tower != null && simulation.state == GameState.PREPARING && simulation.wave < simulation.totalWaves - 1,
+            accent = ECHO, scale = 0.8f, selected = armed) {
+            tower?.let { report(simulation.selectEchoTower(it.id)) }
+        }
+
         when {
             buildType != null -> buildPanel(buildType!!)
             tower != null -> selectedPanel(tower)
@@ -331,6 +342,15 @@ class DefenseScreen : KtxScreen {
 
         val preparing = simulation.state == GameState.PREPARING
         text(if (preparing) "NEXT / WAVE ${simulation.wave + 1}" else "WAVE ${simulation.wave} / INCOMING", 24f, 58f, 0.85f, CYAN)
+        val echo = simulation.echo
+        val echoStatus = when {
+            preparing && echo.recordedCount > 0 -> "Echo ready / ${echo.recordedCount} shots"
+            preparing && echo.armedTowerId != null -> "Echo recorder armed"
+            echo.remainingCount > 0 -> "Echo / ${echo.remainingCount} shots left"
+            echo.recordingTowerId != null -> "Recording / ${echo.recordedCount} shots"
+            else -> null
+        }
+        echoStatus?.let { text(it, 251f, 58f, 0.82f, ECHO) }
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
         button("wave", nextLabel, 565f, 20f, 310f, 43f, preparing, CYAN) { report(simulation.startWave()) }
@@ -577,6 +597,7 @@ class DefenseScreen : KtxScreen {
         private val HOVER = Color.valueOf("2c435e")
         private val WHITE = Color.valueOf("e6edf7")
         private val MUTED = Color.valueOf("9aaec6")
+        private val ECHO = Color.valueOf("c9bbff")
         private val CYAN = Color.valueOf("59d8ea")
         private val GOLD = Color.valueOf("ffd278")
         private val RED = Color.valueOf("ff8791")
