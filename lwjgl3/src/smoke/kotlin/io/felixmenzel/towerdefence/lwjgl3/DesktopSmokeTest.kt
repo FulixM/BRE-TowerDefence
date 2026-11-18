@@ -129,12 +129,20 @@ object DesktopSmokeTest {
                     check(tower.level == 2) { "Upgrade shortcut did not target selected tower" }
                     check(simulation.gold == before - cost)
                     expectedRefund = tower.sellValue
+                    click(1110f, 345f)
+                    val echo = privateField<Any>(simulation, "echo")
+                    check(privateField<Long?>(echo, "armedTowerId") == tower.id)
+                    key(Input.Keys.E)
+                    check(privateField<Long?>(echo, "armedTowerId") == null)
+                    key(Input.Keys.E)
+                    check(privateField<Long?>(echo, "armedTowerId") == tower.id)
                 }
                 4 -> {
                     val before = simulation.gold
                     click(1040f, 142f) // Visible Sell button in the selected-tower inspector.
                     check(simulation.towers.isEmpty()) { "Sell button did not remove tower" }
                     check(simulation.gold == before + expectedRefund)
+                    check(privateField<Long?>(privateField<Any>(simulation, "echo"), "armedTowerId") == null)
                 }
                 5 -> {
                     frozenTick = simulation.tick
@@ -154,7 +162,10 @@ object DesktopSmokeTest {
                     key(Input.Keys.NUM_2)
                     click(450f, 250f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 2)
+                    key(Input.Keys.E)
                     key(Input.Keys.SPACE)
+                    val echo = privateField<Any>(simulation, "echo")
+                    check(privateField<Long?>(echo, "recordingTowerId") == simulation.towers.last().id)
                     check(simulation.state == GameState.RUNNING && simulation.wave == 1)
                 }
                 30 -> {

@@ -44,6 +44,7 @@ Start each wave when ready; there is no preparation timer. Killing enemies earns
 | Mouse | Choose/build/select towers and use HUD buttons |
 | 1–8 | Choose a tower in catalogue order |
 | G | Read the enemy guide and pause the current wave |
+| E | Arm or disarm the selected tower as the wave recorder |
 | U | Upgrade selected tower |
 | T | Cycle the selected tower’s target priority |
 | Space | Start the next wave; pause/resume during combat |
@@ -51,6 +52,8 @@ Start each wave when ready; there is no preparation timer. Killing enemies earns
 | F | Toggle 1x / 2x speed |
 | Right-click / Esc | Cancel placement or selection; Esc otherwise pauses |
 | R | Request restart; confirm with Enter/R or cancel with Esc |
+
+Before starting a wave, select one tower and use **Record [E]**. Its shots replay automatically in the following wave, at the same time offsets and positions, even if the tower has been sold. Echo hits deal half damage and retain armor piercing and status effects. Single impacts and Arc jumps hit nearby enemies within 12 units of the recorded points, while Cannon and Inferno keep their area of effect. Enemies can move past a point before the echo fires. Purple rings show the echo source and upcoming impact. Arm a recorder again to prepare an echo for another wave.
 
 The window scales with a FitViewport and ignores clicks in letterboxing. Text is rasterized from the bundled DejaVu Sans font at the current framebuffer resolution, including HiDPI scaling; it is regenerated when the viewport density changes. Towers, gates and effects use four-sample antialiasing when available, with a supersampled battlefield fallback when the window system cannot provide it. Text stays at native resolution. Losing application focus pauses the game.
 
