@@ -1,6 +1,6 @@
 # BRE Tower Defence
 
-A Kotlin/libGDX tower-defense game: build a defence along the zigzag corridor and protect the core through ten increasingly difficult waves. The simulation runs at a fixed 60 updates per second, independently of rendering.
+A Kotlin/libGDX tower-defense game: build a defence along either of two routes and protect the core through ten increasingly difficult waves. The simulation runs at a fixed 60 updates per second, independently of rendering.
 
 ![Actual first-mission gameplay](docs/screenshots/first-mission.png)
 
@@ -16,7 +16,15 @@ On Windows use `gradlew.bat lwjgl3:run`. Build a runnable desktop JAR with `./gr
 
 ## Play
 
-Start with 220 gold and 20 base lives. Choose a tower in the sidebar and click free ground beside the route. The preview shows range and whether placement is valid. Build at bends to cover several route segments. Select a placed tower to inspect its damage, fire rate and range, upgrade it twice, or sell it for 65% of its total investment.
+The game opens on The Corridor at Normal difficulty. Use **Mission** to choose a route and difficulty. The Corridor has a long central lane and two approaches to its bends. Switchback adds a return bend, so tower positions can cover different stretches of the route.
+
+| Difficulty | Starting gold | Base lives | Enemy health |
+| --- | ---: | ---: | ---: |
+| Relaxed | 260 | 30 | 80% |
+| Normal | 220 | 20 | 100% |
+| Veteran | 180 | 12 | 125% |
+
+Choose a tower in the sidebar and click free ground beside the route. The preview shows range and whether placement is valid. Build at bends to cover several route segments. Select a placed tower to inspect its damage, fire rate and range, preview and buy either of its two upgrade levels, change its target priority, or sell it for 65% of its total investment. First targets the enemy furthest along the route, Strongest targets the one with the most remaining health, and Nearest targets the closest enemy. The result screen shows how many enemies your towers defeated and how many reached the core.
 
 | Tower | Cost | Role |
 | --- | ---: | --- |
@@ -31,6 +39,7 @@ Start each wave when ready; there is no preparation timer. Killing enemies earns
 | Mouse | Choose/build/select towers and use HUD buttons |
 | 1 / 2 / 3 | Choose Pulse / Cannon / Frost |
 | U | Upgrade selected tower |
+| T | Cycle the selected tower’s target priority |
 | Space | Start the next wave; pause/resume during combat |
 | P | Pause/resume |
 | F | Toggle 1x / 2x speed |
@@ -46,7 +55,7 @@ The window scales with a FitViewport and ignores clicks in letterboxing. Text is
 ./gradlew lwjgl3:smokeTest
 ```
 
-The first command runs the simulation and campaign-balance tests. The second needs a graphical display and exercises actual rendering, input, tower management, pause, restart and viewport scaling. On Linux CI use `xvfb-run -a ./gradlew lwjgl3:smokeTest`; the screenshot is written to `lwjgl3/build/reports/desktop-smoke.png`. CI runs both checks and uploads reports.
+The first command runs the simulation and campaign-balance tests. The second needs a graphical display and exercises actual rendering, input, mission selection, tower management, pause, restart and viewport scaling. On Linux CI use `xvfb-run -a ./gradlew lwjgl3:smokeTest`; the screenshot is written to `lwjgl3/build/reports/desktop-smoke.png`. CI runs both checks and uploads reports.
 
 ## Structure
 
@@ -56,6 +65,6 @@ The first command runs the simulation and campaign-balance tests. The second nee
 - `lwjgl3`: desktop launcher, packaging and rendered smoke check.
 - `assets`: original template graphics retained; procedural battlefield art and a bundled, openly licensed DejaVu Sans Latin font (license in `assets/fonts/LICENSE.txt`). No runtime asset downloads.
 
-Design choices and the next priorities are in [game-design.md](docs/game-design.md). Tower values, difficulty rules and automated campaign results are in [balance.md](docs/balance.md). This first mission has no save system, campaign progression, audio or difficulty selector yet.
+Design choices and the next priorities are in [game-design.md](docs/game-design.md). Tower values, difficulty rules and automated campaign results are in [balance.md](docs/balance.md). Missions are independent sessions.
 
 Executed checks, limitations and team contributions are recorded in [verification.md](docs/verification.md).

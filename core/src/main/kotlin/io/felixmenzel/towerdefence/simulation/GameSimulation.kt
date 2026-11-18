@@ -4,13 +4,11 @@ import java.util.Collections
 import kotlin.math.roundToInt
 
 /** Pure Kotlin game rules. Rendering and input never own gold, health, or damage. */
-class GameSimulation {
-    val path: List<Waypoint> = Collections.unmodifiableList(
-        listOf(
-            Waypoint(50.0, 160.0), Waypoint(300.0, 160.0), Waypoint(300.0, 350.0),
-            Waypoint(600.0, 350.0), Waypoint(600.0, 100.0), Waypoint(850.0, 100.0),
-        ),
-    )
+class GameSimulation(
+    val battleMap: BattleMap = BattleMap.CORRIDOR,
+    val difficulty: Difficulty = Difficulty.NORMAL,
+) {
+    val path: List<Waypoint> = battleMap.path
     private val mutableEnemies = mutableListOf<Enemy>()
     private val mutableTowers = mutableListOf<Tower>()
     private val mutableShots = mutableListOf<Shot>()
@@ -19,11 +17,15 @@ class GameSimulation {
     val shots: List<Shot> = Collections.unmodifiableList(mutableShots)
     var tick = 0L
         private set
-    var gold = START_GOLD
+    var gold = difficulty.startingGold
         private set
-    var lives = START_LIVES
+    var lives = difficulty.startingLives
         private set
     var wave = 0
+        private set
+    var kills = 0
+        private set
+    var leakedEnemies = 0
         private set
     val totalWaves = TOTAL_WAVES
     var state = GameState.PREPARING
@@ -50,6 +52,7 @@ class GameSimulation {
         // A leak is resolved before towers fire: reaching the exit is definitive.
         val escaped = mutableEnemies.count { it.hasReachedGoal }
         if (escaped > 0) {
+            leakedEnemies += escaped
             lives = (lives - escaped).coerceAtLeast(0)
             mutableEnemies.removeAll { it.hasReachedGoal }
         }
@@ -62,7 +65,9 @@ class GameSimulation {
         for (tower in mutableTowers) {
             tower.update(tick, mutableEnemies)?.let(mutableShots::add)
         }
-        gold += mutableEnemies.filter { !it.isAlive }.sumOf { it.bounty }
+        val defeated = mutableEnemies.filter { !it.isAlive }
+        kills += defeated.size
+        gold += defeated.sumOf { it.bounty }
         mutableEnemies.removeAll { !it.isAlive }
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
@@ -100,6 +105,13 @@ class GameSimulation {
         return ActionResult(true, "${tower.type.title} upgraded to level ${tower.level}", id)
     }
 
+    fun cycleTargetPriority(id: Long): ActionResult {
+        if (!canManageTowers()) return ActionResult(false, "Restart to change targeting again")
+        val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
+        tower.cycleTargetPriority()
+        return ActionResult(true, "${tower.type.title} targets ${tower.targetPriority.title.lowercase()}", id)
+    }
+
     fun sellTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to sell again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
@@ -134,9 +146,11 @@ class GameSimulation {
         mutableTowers.clear()
         mutableShots.clear()
         tick = 0L
-        gold = START_GOLD
-        lives = START_LIVES
+        gold = difficulty.startingGold
+        lives = difficulty.startingLives
         wave = 0
+        kills = 0
+        leakedEnemies = 0
         state = GameState.PREPARING
         remainingToSpawn = 0
         nextEnemyId = 1L
@@ -149,8 +163,9 @@ class GameSimulation {
 
     private fun spawnEnemy() {
         val type = enemyType(wave, spawnedThisWave)
-        val difficulty = 1.0 + (wave - 1) * 0.22 + (wave - 1) * (wave - 1) * 0.045
-        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, type.baseHealth * difficulty, type)
+        val waveHealthMultiplier = 1.0 + (wave - 1) * 0.22 + (wave - 1) * (wave - 1) * 0.045
+        val health = type.baseHealth * waveHealthMultiplier * difficulty.healthMultiplier
+        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type)
         spawnedThisWave++
         remainingToSpawn--
     }
