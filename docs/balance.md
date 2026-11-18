@@ -9,6 +9,11 @@ Each mission is deliberately finite: ten manually started waves. Normal starts w
 | Pulse | 75 | 135 | 12 | 0.30 s | Affordable, reliable damage against an individual target |
 | Cannon | 120 | 155 | 34 | 1.10 s | Damage to every enemy within 58 units of the impact |
 | Frost | 90 | 125 | 6 | 0.70 s | Reduces the target's speed by 45% for 1.5 seconds |
+| Rail | 140 | 220 | 92 | 1.92 s | Ignores armor, shields still absorb the hit |
+| Arc | 125 | 135 | 32 | 0.90 s | Two jumps of up to 76 units, at 65% and 40% damage |
+| Venom | 100 | 145 | 11 | 1.00 s | Another 11 damage per second for 3 seconds at base level. Strongest dose takes precedence |
+| Inferno | 110 | 84 | 12 | 0.40 s | Hits all enemies within the tower's range |
+| Beacon | 85 | 150 | 8 | 0.93 s | Marks its target for 2.5 seconds. Marked targets take 25% more damage |
 
 Frost effects refresh without multiplying. A support-only defense cannot replace damage towers. Cannon's lower single-target damage per second rewards groups; Pulse is the cheaper choice against isolated targets. The default First priority selects the enemy furthest along the route. Strongest selects by remaining health, and Nearest by distance to the tower. All three resolve ties by enemy ID.
 
@@ -21,8 +26,11 @@ Two upgrades are available per tower. Each adds 14 range and 65% of base damage,
 | Drifter | 80 | 50 | 9 | Wave 1 |
 | Runner | 55 | 86 | 10 | Wave 3 |
 | Bulwark | 190 | 36 | 16 | Wave 5 |
+| Ironclad | 73 | 43 | 15 | Wave 6 |
+| Warden | 74 | 49 | 15 | Wave 7 |
+| Reaver | 95 | 56 | 16 | Wave 8 |
 
-Bulwark has more health rather than hidden damage resistance. This keeps the first mission understandable and avoids an unexplained counter rule.
+Bulwarks rely on high health. Ironclads reduce damage by 40% except for Rail shots. Wardens have a separate, non-recharging shield worth 45% of maximum health. Reavers heal 8% of maximum health per second after a 1.5-second gap in damage.
 
 Wave `w` contains `8 + 2 * (w - 1)` enemies. Health multiplies by `1 + 0.22 * (w - 1) + 0.045 * (w - 1)^2`. Spawn intervals shrink from 0.85 seconds toward a 0.45-second floor. From wave 3 every third slot is a Runner; from wave 5 every fifth slot is a Bulwark, taking precedence over Runner slots. Completing a wave grants `25 + 5 * w` gold. Each escaped enemy costs one life and grants no kill gold.
 
@@ -62,24 +70,24 @@ The default remains Corridor / Normal with the original path, starting resources
 
 Spawn counts, spawn cadence, kill bounties and completion rewards stay identical between difficulties. Veteran can still buy two initial Pulse towers; it cannot initially buy Pulse plus Cannon. All reference strategies use the default First target priority, make decisions only between waves, never sell and never edit simulation state. They build as many consecutive positions from the plan as affordable, then upgrade existing towers in construction order while affordable. They do not skip an unaffordable build-plan entry to select a cheaper later tower.
 
-The original Corridor plan remains in `BalanceSimulationTest`. The new Switchback plan is:
+The original Corridor plan remains in `BalanceSimulationTest`. The expanded Switchback plan is:
 
 | Order | Tower | X | Y |
 | --- | --- | ---: | ---: |
 | 1 | Pulse | 320 | 330 |
-| 2 | Pulse | 420 | 240 |
+| 2 | Pulse | 440 | 225 |
 | 3 | Cannon | 580 | 310 |
 | 4 | Frost | 320 | 240 |
-| 5 | Cannon | 650 | 290 |
-| 6 | Pulse | 160 | 320 |
-| 7 | Cannon | 420 | 470 |
-| 8 | Pulse | 580 | 470 |
-| 9 | Frost | 650 | 470 |
+| 5 | Rail | 650 | 290 |
+| 6 | Arc | 554 | 219 |
+| 7 | Venom | 440 | 344 |
+| 8 | Inferno | 555 | 438 |
+| 9 | Beacon | 625 | 340 |
 | 10 | Cannon | 810 | 320 |
 | 11 | Pulse | 160 | 230 |
 | 12 | Cannon | 580 | 80 |
 
-Actual deterministic Kotlin probes for all six mission choices:
+Historical deterministic probes from the three-tower roster, before the additional enemy types were introduced:
 
 | Map | Difficulty | Full mixed plan | Lives remaining | Gold remaining | Simulation ticks | Undefended base |
 | --- | --- | --- | ---: | ---: | ---: | --- |
@@ -90,7 +98,7 @@ Actual deterministic Kotlin probes for all six mission choices:
 | Switchback | Normal | Victory | 20 | 410 | 16,437 | Defeat |
 | Switchback | Veteran | Victory | 12 | 370 | 20,355 | Defeat |
 
-Each full-plan victory kills all 170 enemies. To check that Veteran is meaningfully stricter rather than merely labeled differently, a second Switchback probe stops construction after the first four positions while continuing affordable upgrades:
+Each full-plan victory kills all 170 enemies. In that roster, a second Switchback probe stopped construction after the first four positions while continuing affordable upgrades:
 
 | Difficulty | Four-tower result | Lives remaining | Escaped enemies |
 | --- | --- | ---: | ---: |
@@ -98,4 +106,6 @@ Each full-plan victory kills all 170 enemies. To check that Veteran is meaningfu
 | Normal | Victory | 5 | 15 |
 | Veteran | Defeat | 0 | 12 |
 
-The complete plan establishes a viable budget-legal strategy on every option; the limited plan demonstrates that Veteran punishes underinvestment. Tests assert meaningful win/loss outcomes and repeatability rather than exact gold or tick counts, so harmless balancing changes do not require rewriting implementation snapshots. No production tuning was needed after these probes. These strategies do not establish that every targeting priority or tower mix is equally strong, and live player feedback is still needed.
+With the expanded roster, the executable plans in `BalanceSimulationTest` use all eight tower types. The tests assert wins and repeatability without fixing gold or tick counts to the historical values. Live player feedback is still needed.
+
+The current 12-position plans defeated all 170 enemies on both maps at all three difficulties using the normal economy. They finished with 419 gold on Relaxed, 447 on Normal, and 411 on Veteran on each map. The current four-position Switchback plan won on Relaxed with 22 lives, lost in wave 10 on Normal, and lost in wave 9 on Veteran.

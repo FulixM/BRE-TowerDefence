@@ -98,10 +98,12 @@ object DesktopSmokeTest {
                     }
                     check(simulation.gold == GameSimulation.START_GOLD)
                     check(simulation.state == GameState.PREPARING)
-                    key(Input.Keys.NUM_1)
+                    key(Input.Keys.NUM_8)
+                    check(privateField<TowerType>(screen, "buildType") == TowerType.BEACON)
                     click(150f, 160f + DefenseScreen.BOARD_Y) // Invalid: on the route.
                     check(simulation.towers.isEmpty()) { "Invalid route placement created a tower" }
                     check(simulation.gold == GameSimulation.START_GOLD) { "Invalid placement spent gold" }
+                    key(Input.Keys.NUM_1)
                 }
                 2 -> {
                     click(220f, 240f + DefenseScreen.BOARD_Y)
@@ -167,6 +169,16 @@ object DesktopSmokeTest {
                     check(simulation.gold == before) { "Paused HUD accepted a game command" }
                     key(Input.Keys.P)
                 }
+                55 -> {
+                    key(Input.Keys.G)
+                    check(privateField<Boolean>(screen, "enemyGuide"))
+                    frozenTick = simulation.tick
+                }
+                60 -> {
+                    check(simulation.tick == frozenTick) { "Enemy guide did not pause the wave" }
+                    writeScreenshot("-enemy-guide")
+                    key(Input.Keys.ESCAPE)
+                }
                 70 -> {
                     check(simulation.tick > frozenTick) { "Resume did not restart simulation" }
                     key(Input.Keys.R)
@@ -191,9 +203,9 @@ object DesktopSmokeTest {
                     check(abs(tower.x - 100.0) <= 2.0 && abs(tower.y - 80.0) <= 2.0) {
                         "Resized click mapped to incorrect world position: ${tower.x}, ${tower.y}"
                     }
-                    key(Input.Keys.NUM_2)
+                    click(1110f, 520f) // Rail is the fourth catalogue entry.
                     click(450f, 250f + DefenseScreen.BOARD_Y)
-                    check(simulation.towers.size == 2)
+                    check(simulation.towers.map { it.type } == listOf(TowerType.RAPID, TowerType.RAIL))
                     key(Input.Keys.SPACE)
                 }
                 95 -> {

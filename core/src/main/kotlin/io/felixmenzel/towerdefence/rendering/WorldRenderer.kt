@@ -288,6 +288,49 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                     shapes.rectLine(x + cos(a) * 15f, y + sin(a) * 15f, x + cos(a) * 20f, y + sin(a) * 20f, 2f)
                 }
             }
+            TowerType.RAIL -> {
+                hexagon(x, y, 9f)
+                for (side in listOf(-1f, 1f)) {
+                    val ox = -dy * 4f * side
+                    val oy = dx * 4f * side
+                    shapes.rectLine(x + ox, y + oy, x + ox + dx * 28f, y + oy + dy * 28f, 3f)
+                }
+            }
+            TowerType.ARC -> {
+                for (index in 0..2) {
+                    val a = angle + index * TWO_PI / 3f
+                    val px = x + cos(a) * 11f
+                    val py = y + sin(a) * 11f
+                    shapes.rectLine(x, y, px, py, 3f)
+                    circle(px, py, 5f)
+                }
+            }
+            TowerType.VENOM -> {
+                circle(x, y, 11f)
+                shapes.rectLine(x, y, x + dx * 22f, y + dy * 22f, 4f)
+                shapes.color = PANEL
+                circle(x, y, 6f)
+                shapes.color = color
+                diamond(x, y, 3f)
+            }
+            TowerType.INFERNO -> {
+                ring(x, y, 12f, 4f, color)
+                shapes.color = color
+                for (index in 0..2) {
+                    val a = angle + index * TWO_PI / 3f
+                    shapes.rectLine(x + cos(a) * 10f, y + sin(a) * 10f,
+                        x + cos(a) * 20f, y + sin(a) * 20f, 5f)
+                }
+            }
+            TowerType.BEACON -> {
+                diamond(x, y, 12f)
+                ring(x, y, 16f, 2f, color)
+                shapes.color = PANEL
+                diamond(x, y, 7f)
+                shapes.color = color
+                shapes.rectLine(x, y - 4f, x, y + 4f, 2f)
+                shapes.rectLine(x - 4f, y, x + 4f, y, 2f)
+            }
         }
     }
 
@@ -304,8 +347,24 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                     x + cos(angle) * 21f, y + sin(angle) * 21f, 1.5f)
             }
         }
-        val radius = when (enemy.type) { EnemyType.ARMORED -> 13f; EnemyType.FAST -> 9f; EnemyType.NORMAL -> 11f }
-        val baseColor = when (enemy.type) { EnemyType.ARMORED -> ORANGE; EnemyType.FAST -> MAGENTA; EnemyType.NORMAL -> CORAL }
+        if (enemy.isPoisoned) ring(x, y, 16f, 1.5f, towerColor(TowerType.VENOM), 0.8f)
+        if (enemy.markedSeconds > 0.0) {
+            shapes.color = towerColor(TowerType.BEACON)
+            shapes.triangle(x - 4f, y - 19f, x + 4f, y - 19f, x, y - 13f)
+        }
+        val radius = when (enemy.type) {
+            EnemyType.ARMORED, EnemyType.PLATED -> 13f
+            EnemyType.FAST -> 9f
+            else -> 11f
+        }
+        val baseColor = when (enemy.type) {
+            EnemyType.ARMORED -> ORANGE
+            EnemyType.FAST -> MAGENTA
+            EnemyType.NORMAL -> CORAL
+            EnemyType.PLATED -> PLATE_COLOR
+            EnemyType.SHIELDED -> ICE
+            EnemyType.REGENERATING -> HEALTH
+        }
         // A brief white tint is derived from the bounded hit history, with no event ownership here.
         val color = hitColor.set(baseColor).lerp(Color.WHITE, recentHitStrength(enemy, simulation) * 0.85f)
         shapes.color = SHADOW
@@ -325,6 +384,25 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.color = PANEL
                 diamond(x, y, 4f)
             }
+            EnemyType.PLATED -> {
+                shapes.rect(x - 10f, y - 10f, 20f, 20f)
+                shapes.color = PANEL
+                shapes.rect(x - 6f, y - 6f, 12f, 12f)
+                shapes.color = color
+                shapes.rectLine(x - 5f, y - 4f, x + 5f, y + 4f, 2f)
+            }
+            EnemyType.SHIELDED -> {
+                circle(x, y, radius)
+                shapes.color = PANEL
+                diamond(x, y, 7f)
+                if (enemy.shield > 0.0) ring(x, y, radius + 4f, 2f, ICE)
+            }
+            EnemyType.REGENERATING -> {
+                circle(x, y, radius)
+                shapes.color = PANEL
+                shapes.rect(x - 2f, y - 7f, 4f, 14f)
+                shapes.rect(x - 7f, y - 2f, 14f, 4f)
+            }
         }
         val width = radius * 2f + 4f
         shapes.color = SHADOW
@@ -332,6 +410,11 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val ratio = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
         shapes.color = if (ratio < 0.3f) CORAL else HEALTH
         shapes.rect(x - width / 2f, y + radius + 8f, width * ratio, 3f)
+        if (enemy.shield > 0.0) {
+            shapes.color = ICE
+            val shieldRatio = enemy.shield / (enemy.maxHealth * enemy.type.shieldFraction)
+            shapes.rect(x - width / 2f, y + radius + 13f, width * shieldRatio.toFloat(), 2f)
+        }
     }
 
     private fun recentHitStrength(enemy: Enemy, simulation: GameSimulation): Float {
@@ -376,15 +459,29 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             val toX = shot.toX.toFloat()
             val toY = shot.toY.toFloat()
             val opacity = 1f - age
+            if (shot.type == TowerType.INFERNO) {
+                ring(fromX, fromY, shot.areaRadius.toFloat() * (0.6f + age * 0.4f),
+                    3f, color, opacity * 0.85f)
+                continue
+            }
             shapes.setColor(color.r, color.g, color.b, opacity * 0.18f)
             shapes.rectLine(fromX, fromY, toX, toY, if (shot.type == TowerType.CANNON) 9f else 5f)
             shapes.setColor(color.r, color.g, color.b, opacity)
             shapes.rectLine(fromX, fromY, toX, toY, if (shot.type == TowerType.CANNON) 3f else 1.6f)
             circle(fromX, fromY, 4f * opacity)
+            var jumpX = toX
+            var jumpY = toY
+            for (jump in shot.arcJumps) {
+                shapes.rectLine(jumpX, jumpY, jump.x.toFloat(), jump.y.toFloat(), 2.5f)
+                jumpX = jump.x.toFloat()
+                jumpY = jump.y.toFloat()
+            }
             val radius = when (shot.type) {
                 TowerType.CANNON -> 8f + age * (Tower.SPLASH_RADIUS.toFloat() - 8f)
                 TowerType.FROST -> 5f + age * 17f
-                TowerType.RAPID -> 3f + age * 9f
+                TowerType.RAIL -> 4f + age * 13f
+                TowerType.BEACON -> 8f + age * 10f
+                else -> 3f + age * 9f
             }
             ring(toX, toY, radius, 2f * opacity + 0.5f, color, opacity)
             for (index in 0..3) {
@@ -516,12 +613,6 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         }
     }
 
-    private fun towerColor(type: TowerType): Color = when (type) {
-        TowerType.RAPID -> CYAN
-        TowerType.CANNON -> ORANGE
-        TowerType.FROST -> ICE
-    }
-
     override fun dispose() {
         fallbackBuffer?.dispose()
         batch.dispose()
@@ -562,3 +653,18 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val DIM = Color.valueOf("5e768f")
     }
 }
+
+private val towerColors = mapOf(
+    TowerType.RAPID to Color.valueOf("59d8ea"),
+    TowerType.CANNON to Color.valueOf("ffba6b"),
+    TowerType.FROST to Color.valueOf("a8bfff"),
+    TowerType.RAIL to Color.valueOf("f8eb91"),
+    TowerType.ARC to Color.valueOf("b899ff"),
+    TowerType.VENOM to Color.valueOf("89de81"),
+    TowerType.INFERNO to Color.valueOf("ff775c"),
+    TowerType.BEACON to Color.valueOf("f69bd6"),
+)
+
+internal fun towerColor(type: TowerType): Color = towerColors.getValue(type)
+
+private val PLATE_COLOR = Color.valueOf("c5d0db")
