@@ -27,4 +27,4 @@ Production packages below are under `core/src/main/kotlin/io/felixmenzel/towerde
 
 - After finishing implementation and verification, start one fresh read-only subagent before the final reply.
 - Ask for up to three ranked ideas that move the game beyond a demo, each with a player benefit and a small playable first version.
-- Summarize its ideas briefly. The scout only proposes ideas and does not spawn further agents.
+- The scout may delegate distinct questions to additional read-only subagents when useful. It combines their input into one ranked shortlist for the final reply.
