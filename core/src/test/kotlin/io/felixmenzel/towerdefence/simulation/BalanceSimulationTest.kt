@@ -31,7 +31,7 @@ class BalanceSimulationTest {
     }
 
     @Test
-    fun `a mixed defense can complete all ten waves using earned gold`() {
+    fun `a mixed defense can complete the campaign using earned gold`() {
         val game = playCampaign(::fortify)
 
         assertEquals(GameState.WON, game.state)
@@ -87,18 +87,33 @@ class BalanceSimulationTest {
 
     @Test
     fun `veteran punishes stopping defense expansion on switchback`() {
-        fun play(difficulty: Difficulty) = playCampaign(GameSimulation(BattleMap.SWITCHBACK, difficulty)) {
+        fun play(difficulty: Difficulty) = playCampaign(GameSimulation(BattleMap.SWITCHBACK, difficulty), throughWave = 10) {
             fortifyUsing(it, switchbackPlan.take(4))
         }
         val relaxed = play(Difficulty.RELAXED)
         val normal = play(Difficulty.NORMAL)
         val veteran = play(Difficulty.VETERAN)
 
-        assertEquals(GameState.WON, relaxed.state)
+        assertEquals(10, relaxed.wave)
+        assertEquals(GameState.PREPARING, relaxed.state)
         assertEquals(GameState.LOST, normal.state)
         assertTrue(normal.leakedEnemies > relaxed.leakedEnemies)
         assertTrue(veteran.wave < normal.wave)
         assertEquals(GameState.LOST, veteran.state)
+    }
+
+    @Test
+    fun `late assaults reward expanding beyond a smaller defense on veteran`() {
+        for (map in BattleMap.entries) {
+            fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty)) {
+                fortifyUsing(it, planFor(map).take(8))
+            }
+
+            assertEquals(GameState.WON, play(Difficulty.NORMAL).state, "$map on Normal")
+            val veteran = play(Difficulty.VETERAN)
+            assertEquals(GameState.LOST, veteran.state, "$map on Veteran")
+            assertTrue(veteran.wave > 10, "$map should survive the opening with this plan")
+        }
     }
 
     @Test
@@ -120,17 +135,17 @@ class BalanceSimulationTest {
     }
 
     private fun playCampaign(prepare: (GameSimulation) -> Unit): GameSimulation =
-        playCampaign(GameSimulation(), prepare)
+        playCampaign(GameSimulation(), prepare = prepare)
 
-    private fun playCampaign(game: GameSimulation, prepare: (GameSimulation) -> Unit): GameSimulation {
-        var wavesStarted = 0
-        while (game.state != GameState.WON && game.state != GameState.LOST) {
-            assertEquals(GameState.PREPARING, game.state)
+    private fun playCampaign(
+        game: GameSimulation,
+        throughWave: Int = game.totalWaves,
+        prepare: (GameSimulation) -> Unit,
+    ): GameSimulation {
+        while (game.state == GameState.PREPARING && game.wave < throughWave) {
             prepare(game)
             assertTrue(game.gold >= 0, "Build orders must never spend unavailable gold")
             assertTrue(game.startWave().success)
-            wavesStarted++
-            assertTrue(wavesStarted <= game.totalWaves, "Campaign must terminate")
             var waveTicks = 0
             while (game.state == GameState.RUNNING) {
                 game.update()

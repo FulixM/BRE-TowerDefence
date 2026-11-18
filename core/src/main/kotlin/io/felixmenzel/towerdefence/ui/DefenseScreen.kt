@@ -17,6 +17,7 @@ import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
+import io.felixmenzel.towerdefence.simulation.Waves
 import io.felixmenzel.towerdefence.ui.HudPalette.BACKGROUND
 import io.felixmenzel.towerdefence.ui.HudPalette.BORDER
 import io.felixmenzel.towerdefence.ui.HudPalette.CYAN
@@ -314,7 +315,10 @@ class DefenseScreen : KtxScreen {
         )
 
         val preparing = simulation.state == GameState.PREPARING
-        text(if (preparing) "NEXT / WAVE ${simulation.wave + 1}" else "WAVE ${simulation.wave} / INCOMING", 24f, 58f, 0.85f, CYAN)
+        val briefedWave = if (preparing) simulation.wave + 1 else simulation.wave
+        val waveTitle = Waves.name(briefedWave)?.let { " / ${it.uppercase()}" }.orEmpty()
+        val waveHeading = if (preparing) "NEXT / WAVE $briefedWave" else "WAVE $briefedWave"
+        text(waveHeading + waveTitle, 24f, 58f, 0.85f, CYAN)
         val echo = simulation.echo
         val echoStatus = when {
             preparing && echo.recordedCount > 0 -> "Echo ready / ${echo.recordedCount} shots"
@@ -323,7 +327,7 @@ class DefenseScreen : KtxScreen {
             echo.recordingTowerId != null -> "Recording / ${echo.recordedCount} shots"
             else -> null
         }
-        echoStatus?.let { text(it, 251f, 58f, 0.82f, ECHO) }
+        echoStatus?.let { text(it, 335f, 58f, 0.82f, ECHO) }
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
         button(nextLabel, 565f, 20f, 310f, 43f, preparing, CYAN) { report(simulation.startWave()) }
@@ -350,7 +354,6 @@ class DefenseScreen : KtxScreen {
     }
 
     private fun wavePreview(): String {
-        if (simulation.wave == simulation.totalWaves && simulation.state != GameState.PREPARING) return "Final assault. Hold until the route is clear."
         return if (simulation.state == GameState.PREPARING) {
             "${simulation.nextWaveDescription}  /  Clear bonus +${simulation.waveReward + 5}g"
         } else simulation.waveDescription(simulation.wave)

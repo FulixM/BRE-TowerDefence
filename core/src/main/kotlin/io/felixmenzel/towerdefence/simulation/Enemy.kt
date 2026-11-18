@@ -39,7 +39,8 @@ class Enemy(
     var slowFactor = 1.0
         private set
     private var slowSeconds = 0.0
-    var shield = maxHealth * type.shieldFraction
+    val maxShield = maxHealth * type.shieldFraction
+    var shield = maxShield
         private set
     var markedSeconds = 0.0
         private set
@@ -47,6 +48,8 @@ class Enemy(
     private var poisonSeconds = 0.0
     private var poisonPerSecond = 0.0
     private var recoveryDelay = 0.0
+    val isRegenerating: Boolean get() = type.regenerationFraction > 0.0 &&
+        isAlive && !hasReachedGoal && health < maxHealth && recoveryDelay == 0.0
 
     fun update(stepSeconds: Double) {
         require(stepSeconds.isFinite() && stepSeconds >= 0.0)
