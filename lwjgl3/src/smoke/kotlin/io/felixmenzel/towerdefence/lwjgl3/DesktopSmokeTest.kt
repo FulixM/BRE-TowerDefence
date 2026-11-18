@@ -15,6 +15,9 @@ import com.badlogic.gdx.utils.viewport.FitViewport
 import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.Main
 import io.felixmenzel.towerdefence.simulation.GameSimulation
+import io.felixmenzel.towerdefence.simulation.BattleMap
+import io.felixmenzel.towerdefence.simulation.Difficulty
+import io.felixmenzel.towerdefence.simulation.TargetPriority
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.TowerType
 import io.felixmenzel.towerdefence.ui.DefenseScreen
@@ -48,6 +51,8 @@ object DesktopSmokeTest {
         private lateinit var viewport: FitViewport
         private var ready = false
         private var frame = 0
+        private var missionSetupStage = 0
+        private var missionSetupFrames = 0
         private var frozenTick = 0L
         private var expectedRefund = 0
         private var screenshotWritten = false
@@ -68,6 +73,11 @@ object DesktopSmokeTest {
 
         override fun render() {
             game.render()
+            simulation = privateField(screen, "simulation")
+            if (missionSetupStage < 8) {
+                checkMissionPicker()
+                return
+            }
             frame++
             check(frame <= 400) { "Smoke test exceeded frame budget" }
             when (frame) {
@@ -97,12 +107,23 @@ object DesktopSmokeTest {
                     click(220f, 240f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 1) { "Valid mouse placement did not build" }
                     check(simulation.gold == GameSimulation.START_GOLD - TowerType.RAPID.cost)
+                    val tower = simulation.towers.single()
+                    check(tower.targetPriority == TargetPriority.FIRST)
+                    key(Input.Keys.T)
+                    check(tower.targetPriority == TargetPriority.STRONGEST) { "Target shortcut did not change selected tower" }
+                    key(Input.Keys.T)
+                    check(tower.targetPriority == TargetPriority.NEAREST)
+                    key(Input.Keys.T)
+                    check(tower.targetPriority == TargetPriority.FIRST)
                 }
                 3 -> {
                     val tower = simulation.towers.single()
                     val cost = checkNotNull(tower.upgradeCost)
                     val before = simulation.gold
+                    val preview = checkNotNull(tower.nextUpgrade)
                     key(Input.Keys.U)
+                    check(tower.range == preview.range && tower.damage == preview.damage &&
+                        tower.attackIntervalTicks == preview.attackIntervalTicks) { "Upgrade differs from preview" }
                     check(tower.level == 2) { "Upgrade shortcut did not target selected tower" }
                     check(simulation.gold == before - cost)
                     expectedRefund = tower.sellValue
@@ -200,8 +221,65 @@ object DesktopSmokeTest {
                     check(simulation.enemies.isNotEmpty())
                     writeScreenshot()
                     screenshotWritten = true
-                    println("Desktop smoke passed: placement, upgrade, sale, waves, pause, restart, resize and letterboxing; screenshot saved.")
+                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize and letterboxing; screenshot saved.")
                     Gdx.app.exit()
+                }
+            }
+        }
+
+        /** Exercise mission selection and abandonment confirmation before the original regression path. */
+        private fun checkMissionPicker() {
+            check(++missionSetupFrames <= 40) { "Mission picker smoke exceeded frame budget" }
+            when (missionSetupStage++) {
+                0 -> {
+                    click(308f, 665f) // Mission button on the permanent HUD.
+                    frozenTick = simulation.tick
+                }
+                1 -> {
+                    check(simulation.tick == frozenTick) { "Mission setup advanced simulation" }
+                    click(652f, 461f) // Switchback.
+                    click(704f, 275f) // Veteran.
+                }
+                2 -> {
+                    writeScreenshot("-mission-options")
+                    click(332f, 184f) // Launch mission.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.battleMap == BattleMap.SWITCHBACK)
+                    check(simulation.difficulty == Difficulty.VETERAN)
+                    check(simulation.gold == Difficulty.VETERAN.startingGold)
+                    check(simulation.lives == Difficulty.VETERAN.startingLives)
+                    key(Input.Keys.SPACE)
+                }
+                3 -> {
+                    check(simulation.state == GameState.RUNNING && simulation.wave == 1)
+                    if (simulation.enemies.isEmpty()) {
+                        missionSetupStage = 3 // A real frame can be shorter than one fixed simulation step.
+                        return
+                    }
+                    val enemy = simulation.enemies.single()
+                    check(enemy.maxHealth == enemy.type.baseHealth * Difficulty.VETERAN.healthMultiplier)
+                    writeScreenshot("-switchback")
+                    key(Input.Keys.M)
+                    frozenTick = simulation.tick
+                }
+                4 -> {
+                    check(simulation.tick == frozenTick)
+                    click(332f, 461f) // Original Corridor.
+                    click(492f, 275f) // Normal.
+                }
+                5 -> {
+                    click(332f, 184f)
+                    // A running defence must not be discarded before explicit confirmation.
+                    check(simulation.battleMap == BattleMap.SWITCHBACK)
+                    check(simulation.wave == 1)
+                }
+                6 -> {
+                    check(simulation.tick == frozenTick)
+                    click(332f, 293f) // Confirm replacing the running mission.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.battleMap == BattleMap.CORRIDOR)
+                    check(simulation.difficulty == Difficulty.NORMAL)
+                    checkFreshMission()
                 }
             }
         }

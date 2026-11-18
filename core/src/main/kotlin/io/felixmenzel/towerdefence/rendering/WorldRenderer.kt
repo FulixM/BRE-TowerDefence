@@ -13,12 +13,14 @@ import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector3
 import com.badlogic.gdx.utils.BufferUtils
 import com.badlogic.gdx.utils.Disposable
+import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.acos
 import kotlin.math.atan2
@@ -35,6 +37,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private val viewportBuffer = BufferUtils.newIntBuffer(4)
     private val scissorBuffer = BufferUtils.newIntBuffer(4)
     private val projectedPoint = Vector3()
+    private val hitColor = Color()
     private var pixelsPerUnit = 1f
     private val boardClipBuffer = BufferUtils.newIntBuffer(4)
     private val sampleBuffer = BufferUtils.newIntBuffer(1)
@@ -124,23 +127,25 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     }
 
     private fun drawBoard(simulation: GameSimulation) {
-        shapes.color = BOARD
+        val switchback = simulation.battleMap == BattleMap.SWITCHBACK
+        shapes.color = if (switchback) RELAY_BOARD else BOARD
         shapes.rect(0f, 0f, WIDTH, HEIGHT)
-        shapes.color = GRID
+        shapes.color = if (switchback) RELAY_GRID else GRID
         for (x in 0..900 step 30) shapes.rect(x.toFloat(), 0f, 1f, HEIGHT)
         for (y in 0..560 step 30) shapes.rect(0f, y.toFloat(), WIDTH, 1f)
-        shapes.color = GRID_MAJOR
+        shapes.color = if (switchback) RELAY_GRID_MAJOR else GRID_MAJOR
         for (x in 60..870 step 120) {
             for (y in 60..540 step 120) {
                 shapes.rect(x - 3f, y.toFloat(), 7f, 1f)
                 shapes.rect(x.toFloat(), y - 3f, 1f, 7f)
             }
         }
-        // Each layer has round joints, so the original orthogonal path remains readable at bends.
-        drawPath(simulation, 48f, PATH_EDGE)
-        drawPath(simulation, 42f, PATH)
-        drawPath(simulation, 26f, PATH_INNER)
-        shapes.color = PATH_MARK
+        if (switchback) drawRelayTrim()
+        // Both maps use the same lane width: the artwork never suggests different placement rules.
+        drawPath(simulation, 48f, if (switchback) RELAY_PATH_EDGE else PATH_EDGE)
+        drawPath(simulation, 42f, if (switchback) RELAY_PATH else PATH)
+        drawPath(simulation, 26f, if (switchback) RELAY_PATH_INNER else PATH_INNER)
+        shapes.color = if (switchback) RELAY_PATH_MARK else PATH_MARK
         val path = simulation.path
         for (index in 0 until path.lastIndex) {
             val start = path[index]
@@ -174,6 +179,19 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.rectLine(x, y, x, y + dy, 2f)
             }
         }
+    }
+
+    /** Cosmetic edge markings distinguish the relay map without creating fake build obstacles. */
+    private fun drawRelayTrim() {
+        shapes.color = RELAY_TRIM
+        shapes.rect(10f, HEIGHT - 10f, WIDTH - 20f, 2f)
+        shapes.rect(10f, 8f, WIDTH - 20f, 2f)
+        for (x in 640..860 step 18) {
+            shapes.rectLine(x.toFloat(), 514f, x + 7f, 526f, 2f)
+        }
+        shapes.color = RELAY_GRID_MAJOR
+        shapes.rectLine(630f, 504f, 874f, 504f, 1f)
+        shapes.rectLine(874f, 504f, 874f, 535f, 1f)
     }
 
     private fun drawPath(simulation: GameSimulation, width: Float, color: Color) {
@@ -228,17 +246,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         hexagon(x, y, 18f)
         ring(x, y, 15f, 1.5f, color, 0.5f)
         if (selected) ring(x, y, 26f, 1.5f, CYAN)
-        var target: Enemy? = null
-        for (enemy in simulation.enemies) {
-            if (!enemy.isAlive || enemy.hasReachedGoal) continue
-            val distance = (enemy.x - tower.x) * (enemy.x - tower.x) + (enemy.y - tower.y) * (enemy.y - tower.y)
-            if (distance > tower.range * tower.range) continue
-            val previous = target
-            if (previous == null || enemy.distanceTravelled > previous.distanceTravelled ||
-                (enemy.distanceTravelled == previous.distanceTravelled && enemy.id < previous.id)) {
-                target = enemy
-            }
-        }
+        // The aiming preview follows the same selectable priority as the resolved combat hit.
+        val target = tower.selectTarget(simulation.enemies)
         val lastShot = simulation.shots.lastOrNull { it.fromX == tower.x && it.fromY == tower.y }
         val angle = when {
             lastShot != null -> atan2(lastShot.toY - tower.y, lastShot.toX - tower.x).toFloat()
@@ -296,7 +305,9 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             }
         }
         val radius = when (enemy.type) { EnemyType.ARMORED -> 13f; EnemyType.FAST -> 9f; EnemyType.NORMAL -> 11f }
-        val color = when (enemy.type) { EnemyType.ARMORED -> ORANGE; EnemyType.FAST -> MAGENTA; EnemyType.NORMAL -> CORAL }
+        val baseColor = when (enemy.type) { EnemyType.ARMORED -> ORANGE; EnemyType.FAST -> MAGENTA; EnemyType.NORMAL -> CORAL }
+        // A brief white tint is derived from the bounded hit history, with no event ownership here.
+        val color = hitColor.set(baseColor).lerp(Color.WHITE, recentHitStrength(enemy, simulation) * 0.85f)
         shapes.color = SHADOW
         circle(x + 2f, y - 3f, radius + 2f)
         shapes.color = color
@@ -308,10 +319,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.color = color
                 shapes.rect(x - 4f, y - 4f, 8f, 8f)
             }
-            EnemyType.FAST -> {
-                shapes.triangle(x - 10f, y - 8f, x - 2f, y, x - 10f, y + 8f)
-                shapes.triangle(x - 2f, y - 8f, x + 10f, y, x - 2f, y + 8f)
-            }
+            EnemyType.FAST -> drawRunner(x, y, enemy, simulation)
             EnemyType.NORMAL -> {
                 diamond(x, y, radius)
                 shapes.color = PANEL
@@ -324,6 +332,37 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val ratio = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
         shapes.color = if (ratio < 0.3f) CORAL else HEALTH
         shapes.rect(x - width / 2f, y + radius + 8f, width * ratio, 3f)
+    }
+
+    private fun recentHitStrength(enemy: Enemy, simulation: GameSimulation): Float {
+        var strength = 0f
+        for (shot in simulation.shots) {
+            val age = simulation.tick - shot.tick
+            if (age !in 0L until HIT_FLASH_TICKS) continue
+            if (enemy.id in shot.hitEnemyIds) {
+                strength = maxOf(strength, 1f - age.toFloat() / HIT_FLASH_TICKS)
+            }
+        }
+        return strength
+    }
+
+    private fun drawRunner(x: Float, y: Float, enemy: Enemy, simulation: GameSimulation) {
+        var dx = enemy.x - enemy.previousX
+        var dy = enemy.y - enemy.previousY
+        if (dx * dx + dy * dy < 0.000001) {
+            val path = simulation.path
+            dx = path[1].x - path[0].x
+            dy = path[1].y - path[0].y
+        }
+        val length = sqrt(dx * dx + dy * dy).coerceAtLeast(0.000001)
+        val ux = (dx / length).toFloat()
+        val uy = (dy / length).toFloat()
+        shapes.triangle(x - ux * 10f + uy * 8f, y - uy * 10f - ux * 8f,
+            x - ux * 2f, y - uy * 2f,
+            x - ux * 10f - uy * 8f, y - uy * 10f + ux * 8f)
+        shapes.triangle(x - ux * 2f + uy * 8f, y - uy * 2f - ux * 8f,
+            x + ux * 10f, y + uy * 10f,
+            x - ux * 2f - uy * 8f, y - uy * 2f + ux * 8f)
     }
 
     private fun drawShots(simulation: GameSimulation) {
@@ -343,7 +382,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.rectLine(fromX, fromY, toX, toY, if (shot.type == TowerType.CANNON) 3f else 1.6f)
             circle(fromX, fromY, 4f * opacity)
             val radius = when (shot.type) {
-                TowerType.CANNON -> 8f + age * 42f
+                TowerType.CANNON -> 8f + age * (Tower.SPLASH_RADIUS.toFloat() - 8f)
                 TowerType.FROST -> 5f + age * 17f
                 TowerType.RAPID -> 3f + age * 9f
             }
@@ -377,14 +416,17 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private fun drawLabels(simulation: GameSimulation) {
         var font = fonts.get(0.9f)
         font.color = MUTED
-        font.draw(batch, "BRE / DEFENSE GRID", 32f, 490f)
+        val switchback = simulation.battleMap == BattleMap.SWITCHBACK
+        font.draw(batch, if (switchback) "BRE / RELAY GRID" else "BRE / DEFENSE GRID", 32f, 490f)
         font = fonts.get(0.75f)
         font.color = DIM
-        font.draw(batch, "SECTOR 01    /    ZIGZAG CORRIDOR", 32f, 470f)
+        val sector = if (switchback) "02" else "01"
+        font.draw(batch, "SECTOR $sector    /    ${simulation.battleMap.title.uppercase(Locale.ROOT)}", 32f, 470f)
         font.draw(batch, "BUILD OFF THE ROUTE  /  PROTECT THE CORE", 32f, 28f)
         simulation.path.firstOrNull()?.let {
             font.color = CORAL
-            font.draw(batch, "ENTRY", it.x.toFloat() - 18f, it.y.toFloat() + 49f)
+            val labelY = if (it.y > 350.0) it.y.toFloat() - 42f else it.y.toFloat() + 49f
+            font.draw(batch, "ENTRY", it.x.toFloat() - 18f, labelY)
         }
         simulation.path.lastOrNull()?.let {
             font.color = CYAN
@@ -489,6 +531,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private companion object {
         const val WIDTH = 900f
         const val HEIGHT = 560f
+        const val HIT_FLASH_TICKS = 7L
         const val TWO_PI = 6.2831855f
         const val PI_THIRD = 1.0471976f
         val BOARD = Color.valueOf("0b101c")
@@ -500,6 +543,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val PATH = Color.valueOf("202e40")
         val PATH_INNER = Color.valueOf("26364a")
         val PATH_MARK = Color.valueOf("4a627a")
+        val RELAY_BOARD = Color.valueOf("171711")
+        val RELAY_GRID = Color.valueOf("202219")
+        val RELAY_GRID_MAJOR = Color.valueOf("373b27")
+        val RELAY_PATH_EDGE = Color.valueOf("6e633e")
+        val RELAY_PATH = Color.valueOf("3b3929")
+        val RELAY_PATH_INNER = Color.valueOf("48432e")
+        val RELAY_PATH_MARK = Color.valueOf("93875e")
+        val RELAY_TRIM = Color.valueOf("6b5b32")
         val SHADOW = Color(0.005f, 0.009f, 0.02f, 0.75f)
         val CYAN = Color.valueOf("59d8ea")
         val ORANGE = Color.valueOf("ffba6b")

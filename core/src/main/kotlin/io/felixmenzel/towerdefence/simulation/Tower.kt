@@ -24,40 +24,73 @@ class Tower(
 
     var level = 1
         private set
+    var targetPriority = TargetPriority.FIRST
+        private set
     private var totalInvestment = type.cost
-    val range: Double get() = initialRange + (level - 1) * 14.0
-    val damage: Double get() = initialDamage * (1.0 + (level - 1) * 0.65)
-    val attackIntervalTicks: Long get() = (initialAttackInterval * (1.0 - (level - 1) * 0.08)).toLong().coerceAtLeast(1L)
-    val upgradeCost: Int? get() = if (level >= MAX_LEVEL) null else (type.cost * (0.8 + (level - 1) * 0.5)).roundToInt()
+    val range: Double get() = rangeAtLevel(level)
+    val damage: Double get() = damageAtLevel(level)
+    val attackIntervalTicks: Long get() = attackIntervalAtLevel(level)
+    val nextUpgrade: TowerUpgrade?
+        get() = if (level >= MAX_LEVEL) null else TowerUpgrade(
+            cost = (type.cost * (0.8 + (level - 1) * 0.5)).roundToInt(),
+            range = rangeAtLevel(level + 1),
+            damage = damageAtLevel(level + 1),
+            attackIntervalTicks = attackIntervalAtLevel(level + 1),
+        )
+    val upgradeCost: Int? get() = nextUpgrade?.cost
     val sellValue: Int get() = (totalInvestment * 0.65).toInt()
     private var nextAttackTick = 0L
 
+    private fun rangeAtLevel(level: Int) = initialRange + (level - 1) * 14.0
+    private fun damageAtLevel(level: Int) = initialDamage * (1.0 + (level - 1) * 0.65)
+    private fun attackIntervalAtLevel(level: Int) =
+        (initialAttackInterval * (1.0 - (level - 1) * 0.08)).toLong().coerceAtLeast(1L)
+
     internal fun upgrade() {
-        val cost = checkNotNull(upgradeCost)
-        totalInvestment += cost
+        val upgrade = checkNotNull(nextUpgrade)
+        totalInvestment += upgrade.cost
         level++
+    }
+
+    internal fun cycleTargetPriority() {
+        val priorities = TargetPriority.entries
+        targetPriority = priorities[(targetPriority.ordinal + 1) % priorities.size]
+    }
+
+    /** The renderer and combat share exactly one eligible-target and priority rule. */
+    fun selectTarget(enemies: List<Enemy>): Enemy? {
+        val comparator = when (targetPriority) {
+            TargetPriority.FIRST -> compareBy<Enemy>({ -it.distanceTravelled }, { it.id })
+            TargetPriority.STRONGEST -> compareBy<Enemy>({ -it.health }, { it.id })
+            TargetPriority.NEAREST -> compareBy<Enemy>({ distanceSquaredTo(it) }, { it.id })
+        }
+        return enemies.asSequence()
+            .filter { it.isAlive && !it.hasReachedGoal && distanceSquaredTo(it) <= range * range }
+            .minWithOrNull(comparator)
     }
 
     fun update(currentTick: Long, enemies: List<Enemy>): Shot? {
         if (currentTick < nextAttackTick) return null
-        val target = enemies.asSequence()
-            .filter { it.isAlive && !it.hasReachedGoal && distanceSquaredTo(it) <= range * range }
-            .minWithOrNull(compareBy<Enemy>({ -it.distanceTravelled }, { it.id })) ?: return null
+        val target = selectTarget(enemies) ?: return null
 
-        if (type == TowerType.CANNON) {
-            for (enemy in enemies) {
-                val dx = enemy.x - target.x
-                val dy = enemy.y - target.y
-                if (enemy.isAlive && !enemy.hasReachedGoal && dx * dx + dy * dy <= SPLASH_RADIUS * SPLASH_RADIUS) {
-                    enemy.takeDamage(damage)
+        val hitEnemyIds = if (type == TowerType.CANNON) {
+            buildList {
+                for (enemy in enemies) {
+                    val dx = enemy.x - target.x
+                    val dy = enemy.y - target.y
+                    if (enemy.isAlive && !enemy.hasReachedGoal && dx * dx + dy * dy <= SPLASH_RADIUS * SPLASH_RADIUS) {
+                        enemy.takeDamage(damage)
+                        add(enemy.id)
+                    }
                 }
             }
         } else {
             target.takeDamage(damage)
             if (type == TowerType.FROST && target.isAlive) target.applySlow(0.55, 1.5)
+            listOf(target.id)
         }
         nextAttackTick = currentTick + attackIntervalTicks
-        return Shot(x, y, target.x, target.y, type, currentTick)
+        return Shot(x, y, target.x, target.y, type, currentTick, hitEnemyIds)
     }
 
     private fun distanceSquaredTo(enemy: Enemy): Double {
@@ -86,4 +119,21 @@ enum class TowerType(
 }
 
 /** A visual trace of an already resolved hit, not a second source of damage. */
-data class Shot(val fromX: Double, val fromY: Double, val toX: Double, val toY: Double, val type: TowerType, val tick: Long)
+data class Shot(
+    val fromX: Double,
+    val fromY: Double,
+    val toX: Double,
+    val toY: Double,
+    val type: TowerType,
+    val tick: Long,
+    val hitEnemyIds: List<Long>,
+)
+
+/** Exact next-level values, calculated by the same rules as the active tower stats. */
+data class TowerUpgrade(val cost: Int, val range: Double, val damage: Double, val attackIntervalTicks: Long)
+
+enum class TargetPriority(val title: String) {
+    FIRST("First"),
+    STRONGEST("Strongest"),
+    NEAREST("Nearest"),
+}
