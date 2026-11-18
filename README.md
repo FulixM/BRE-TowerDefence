@@ -64,7 +64,7 @@ The window scales with a FitViewport and ignores clicks in letterboxing. Text is
 ./gradlew lwjgl3:smokeTest
 ```
 
-The first command runs the simulation and campaign-balance tests. The second needs a graphical display and exercises actual rendering, input, mission selection, tower management, pause, restart and viewport scaling. On Linux CI use `xvfb-run -a ./gradlew lwjgl3:smokeTest`; the screenshot is written to `lwjgl3/build/reports/desktop-smoke.png`. CI runs both checks and uploads reports.
+The first command runs the simulation and campaign-balance tests. The second needs a graphical display and exercises actual rendering, input, mission selection, tower management, pause, restart and viewport scaling. On Linux CI use `xvfb-run -a ./gradlew lwjgl3:smokeTest`; the screenshot is written to `lwjgl3/build/reports/desktop-smoke.png`. CI runs both checks and uploads available diagnostics on failure.
 
 ## Structure
 
