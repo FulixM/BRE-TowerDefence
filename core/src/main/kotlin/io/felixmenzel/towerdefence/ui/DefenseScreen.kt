@@ -429,10 +429,6 @@ class DefenseScreen : KtxScreen {
         fonts.dispose()
     }
 
-    private data class Label(val text: String, val x: Float, val y: Float, val scale: Float, val color: Color, val width: Float)
-    private data class Button(val id: String, val label: String, val bounds: Rectangle, val enabled: Boolean,
-        val scale: Float, val labelOffsetY: Float, val action: () -> Unit)
-
     companion object {
         const val WIDTH = 1200f
         const val HEIGHT = 720f
