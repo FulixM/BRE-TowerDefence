@@ -10,7 +10,13 @@ For current values, see [Tower.kt](../core/src/main/kotlin/io/felixmenzel/towerd
 
 The reference plans use public commands and earned gold. They build in a fixed order between waves, then upgrade in construction order. The short Switchback probe stops after four towers and continues buying upgrades. Each wave has a simulated timeout.
 
-## Fifteen-wave campaign
+## Crosswind Pass and Vanguard
+
+Crosswind Pass trades long right-angle bends for two diagonal ramps. The reference plan covers the entry before investing near the middle lane. On Veteran it survives the full campaign with seven lives without echo assistance.
+
+Vanguards arrive in the final two waves. Sunder removes shielding faster, while Rail handles armor. Regular damage remains useful once the shield is gone.
+
+## Original fifteen-wave campaign on Corridor and Switchback
 
 The final formations rotate the main threats to reward different parts of a mixed defence. Enemy health keeps rising, but more slowly than in the opening. The original ten waves retain their timing, composition and health.
 

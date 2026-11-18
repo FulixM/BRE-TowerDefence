@@ -94,14 +94,23 @@ class Enemy(
     }
 
     fun takeDamage(damage: Double, piercesArmor: Boolean = false) {
+        applyDamage(damage, piercesArmor, shieldMultiplier = 1.0)
+    }
+
+    internal fun takeShieldbreakingDamage(damage: Double) {
+        applyDamage(damage, piercesArmor = false, shieldMultiplier = 3.0)
+    }
+
+    private fun applyDamage(damage: Double, piercesArmor: Boolean, shieldMultiplier: Double) {
         require(damage.isFinite() && damage >= 0.0) { "Damage must be finite and non-negative" }
         if (damage == 0.0 || !isAlive) return
         recoveryDelay = 1.5
         val incoming = damage * (if (markedSeconds > 0.0) 1.25 else 1.0) *
             (if (piercesArmor) 1.0 else type.damageMultiplier)
-        val absorbed = min(shield, incoming)
+        val absorbed = min(shield, incoming * shieldMultiplier)
         shield -= absorbed
-        health = (health - (incoming - absorbed)).coerceAtLeast(0.0)
+        // Only damage spent against the shield gains the bonus; overflow uses the normal rate.
+        health = (health - (incoming - absorbed / shieldMultiplier)).coerceAtLeast(0.0)
     }
 
     /** Slows never multiply; repeated shots refresh the strongest active slow. */
@@ -140,4 +149,8 @@ enum class EnemyType(
     PLATED("Ironclad", 73.0, 43.0, 15, 6, "Takes 40% less damage. Rail ignores armor.", damageMultiplier = 0.6),
     SHIELDED("Warden", 74.0, 49.0, 15, 7, "Shield absorbs damage before health.", shieldFraction = 0.45),
     REGENERATING("Reaver", 95.0, 56.0, 16, 8, "Heals after 1.5s without damage. Keep it under fire.", regenerationFraction = 0.08),
+    VANGUARD(
+        "Vanguard", 105.0, 39.0, 20, 14, "Sunder breaks its shield faster. Rail bypasses its armor.",
+        damageMultiplier = 0.75, shieldFraction = 0.30,
+    ),
 }

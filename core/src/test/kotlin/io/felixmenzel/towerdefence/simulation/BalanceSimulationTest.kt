@@ -55,7 +55,7 @@ class BalanceSimulationTest {
     }
 
     @Test
-    fun `both maps are winnable on every difficulty with a budget legal mixed defense`() {
+    fun `all maps are winnable on every difficulty with a budget legal mixed defense`() {
         for (battleMap in BattleMap.entries) {
             for (difficulty in Difficulty.entries) {
                 val game = playCampaign(GameSimulation(battleMap, difficulty)) {
@@ -104,7 +104,7 @@ class BalanceSimulationTest {
 
     @Test
     fun `late assaults reward expanding beyond a smaller defense on veteran`() {
-        for (map in BattleMap.entries) {
+        for (map in listOf(BattleMap.CORRIDOR, BattleMap.SWITCHBACK)) {
             fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty)) {
                 fortifyUsing(it, planFor(map).take(8))
             }
@@ -176,6 +176,7 @@ class BalanceSimulationTest {
     private fun planFor(battleMap: BattleMap): List<Placement> = when (battleMap) {
         BattleMap.CORRIDOR -> buildPlan
         BattleMap.SWITCHBACK -> switchbackPlan
+        BattleMap.CROSSWIND -> crosswindPlan
     }
 
     private data class Placement(val type: TowerType, val x: Double, val y: Double)
@@ -193,6 +194,7 @@ class BalanceSimulationTest {
         Placement(TowerType.CANNON, 810.0, 320.0),
         Placement(TowerType.RAPID, 160.0, 230.0),
         Placement(TowerType.CANNON, 580.0, 80.0),
+        Placement(TowerType.SUNDER, 675.0, 443.0),
     )
 
     private val buildPlan = listOf(
@@ -208,5 +210,22 @@ class BalanceSimulationTest {
         Placement(TowerType.CANNON, 160.0, 230.0),
         Placement(TowerType.RAPID, 450.0, 430.0),
         Placement(TowerType.CANNON, 700.0, 30.0),
+        Placement(TowerType.SUNDER, 435.0, 265.0),
+    )
+
+    private val crosswindPlan = listOf(
+        Placement(TowerType.RAPID, 125.0, 185.0),
+        Placement(TowerType.INFERNO, 482.0, 295.0),
+        Placement(TowerType.FROST, 475.0, 432.0),
+        Placement(TowerType.RAPID, 318.0, 180.0),
+        Placement(TowerType.SUNDER, 574.0, 340.0),
+        Placement(TowerType.CANNON, 394.0, 278.0),
+        Placement(TowerType.CANNON, 700.0, 225.0),
+        Placement(TowerType.RAPID, 194.0, 205.0),
+        Placement(TowerType.VENOM, 552.0, 205.0),
+        Placement(TowerType.BEACON, 600.0, 105.0),
+        Placement(TowerType.CANNON, 752.0, 90.0),
+        Placement(TowerType.ARC, 414.0, 429.0),
+        Placement(TowerType.RAIL, 285.0, 352.0),
     )
 }

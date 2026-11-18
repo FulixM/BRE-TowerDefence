@@ -29,6 +29,40 @@ class RosterTest {
     }
 
     @Test
+    fun `sunder triples shield damage without amplifying damage to health or bypassing armor`() {
+        val vanguard = enemy(1, type = EnemyType.VANGUARD)
+        val unshielded = enemy(2)
+        val sunder = tower(TowerType.SUNDER)
+
+        assertNotNull(sunder.update(1, listOf(vanguard)))
+        assertEquals(0.0, vanguard.shield)
+        assertEquals(95.0, vanguard.health)
+        assertNotNull(sunder.update(11, listOf(vanguard)))
+        assertEquals(80.0, vanguard.health)
+        assertNotNull(sunder.update(21, listOf(unshielded)))
+        assertEquals(80.0, unshielded.health)
+    }
+
+    @Test
+    fun `sunder echo applies half base damage with the same shield bonus`() {
+        val sunder = Tower(0.0, 0.0, 80.0, 20.0, 10, id = 42, type = TowerType.SUNDER)
+        val echo = WaveEcho()
+        echo.toggleTower(sunder.id)
+        echo.startWave(0)
+        echo.record(sunder, assertNotNull(sunder.update(1, listOf(enemy(1)))))
+        echo.finishWave()
+        val vanguard = enemy(2, type = EnemyType.VANGUARD)
+        val shots = mutableListOf<Shot>()
+        echo.startWave(100)
+        echo.replay(101, listOf(vanguard), shots)
+
+        assertEquals(listOf(vanguard.id), shots.single().hitEnemyIds)
+        assertTrue(shots.single().isEcho)
+        assertEquals(7.5, vanguard.shield)
+        assertEquals(100.0, vanguard.health)
+    }
+
+    @Test
     fun `arc chains beyond initial range with falloff and no repeat hits`() {
         val enemies = listOf(enemy(1, 65.0), enemy(2, 115.0), enemy(3, 170.0), enemy(4, 220.0))
         val shot = assertNotNull(tower(TowerType.ARC).update(1, enemies))
@@ -80,7 +114,7 @@ class RosterTest {
         for (type in EnemyType.entries) {
             assertEquals(type.firstWave, waves.entries.first { type in it.value }.key)
         }
-        assertTrue(waves.getValue(10).containsAll(EnemyType.entries))
+        assertTrue(waves.getValue(10).containsAll(EnemyType.entries.filter { it.firstWave <= 10 }))
     }
 
     @Test

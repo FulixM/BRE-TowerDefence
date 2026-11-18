@@ -29,6 +29,17 @@ enum class BattleMap(val title: String, path: List<Waypoint>) {
             Waypoint(730.0, 210.0),
             Waypoint(850.0, 210.0),
         ),
+    ),
+    CROSSWIND(
+        "Crosswind Pass",
+        listOf(
+            Waypoint(50.0, 120.0),
+            Waypoint(210.0, 120.0),
+            Waypoint(350.0, 360.0),
+            Waypoint(510.0, 360.0),
+            Waypoint(650.0, 145.0),
+            Waypoint(850.0, 145.0),
+        ),
     );
 
     /** Neither callers nor a mutable constructor argument can alter a mission during play. */

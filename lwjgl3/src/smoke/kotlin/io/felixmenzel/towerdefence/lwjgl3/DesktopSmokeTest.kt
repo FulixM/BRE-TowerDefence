@@ -79,7 +79,7 @@ object DesktopSmokeTest {
         override fun render() {
             game.render()
             simulation = privateField(screen, "simulation")
-            if (missionSetupStage < 8) {
+            if (missionSetupStage < 12) {
                 checkMissionPicker()
                 return
             }
@@ -266,7 +266,7 @@ object DesktopSmokeTest {
                 }
                 1 -> {
                     check(simulation.tick == frozenTick) { "Mission setup advanced simulation" }
-                    click(652f, 461f) // Switchback.
+                    click(500f, 461f) // Switchback.
                     click(704f, 275f) // Veteran.
                 }
                 2 -> {
@@ -293,7 +293,7 @@ object DesktopSmokeTest {
                 }
                 4 -> {
                     check(simulation.tick == frozenTick)
-                    click(332f, 461f) // Original Corridor.
+                    click(280f, 461f) // Original Corridor.
                     click(492f, 275f) // Normal.
                 }
                 5 -> {
@@ -308,6 +308,35 @@ object DesktopSmokeTest {
                     simulation = privateField(screen, "simulation")
                     check(simulation.battleMap == BattleMap.CORRIDOR)
                     check(simulation.difficulty == Difficulty.NORMAL)
+                    checkFreshMission()
+                }
+                7 -> key(Input.Keys.M)
+                8 -> {
+                    click(718f, 461f) // Crosswind Pass.
+                    click(332f, 184f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.battleMap == BattleMap.CROSSWIND)
+                    checkFreshMission()
+                }
+                9 -> {
+                    key(Input.Keys.NUM_9)
+                    check(privateField<TowerType>(screen, "buildType") == TowerType.SUNDER)
+                    key(Input.Keys.ESCAPE)
+                    click(985f, 399f) // Sunder catalogue card.
+                    click(194f, 205f + DefenseScreen.BOARD_Y)
+                    check(simulation.towers.single().type == TowerType.SUNDER)
+                    check(simulation.gold == GameSimulation.START_GOLD - TowerType.SUNDER.cost)
+                }
+                10 -> {
+                    writeScreenshot("-crosswind")
+                    click(1040f, 142f) // Sell before returning to Corridor.
+                    key(Input.Keys.M)
+                }
+                11 -> {
+                    click(280f, 461f)
+                    click(332f, 184f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.battleMap == BattleMap.CORRIDOR)
                     checkFreshMission()
                 }
             }
@@ -351,6 +380,7 @@ object DesktopSmokeTest {
                 update(2.0)
             }
             addEnemy(640.0, EnemyType.NORMAL).takeDamage(80.0)
+            addEnemy(760.0, EnemyType.VANGUARD)
 
             val renderer = privateField<WorldRenderer>(screen, "renderer")
             val projection = Matrix4(viewport.camera.combined).translate(0f, DefenseScreen.BOARD_Y, 0f)
@@ -379,6 +409,8 @@ object DesktopSmokeTest {
                 expectColor("gap between armor plates", 403f, 307f, 0x080d17)
                 expectColor("active regeneration", 542f, 301f, 0xd5a1ff)
                 expectColor("critical health", 628f, 301f, 0xff7d83)
+                expectColor("Vanguard shield", 750f, 307f, 0x56dffa)
+                expectColor("Vanguard armor above its shield", 760f, 314f, 0xffcb68)
             } finally {
                 pixels.dispose()
             }

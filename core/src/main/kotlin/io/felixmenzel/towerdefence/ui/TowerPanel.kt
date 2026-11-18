@@ -27,7 +27,7 @@ internal fun HudCanvas.drawTowerPanel(
     text("BUILD TOWERS", 922f, 614f, 1f, WHITE)
     for ((index, type) in TowerType.entries.withIndex()) {
         val x = 922f + (index % 2) * 130f
-        val y = 550f - (index / 2) * 55f
+        val y = 552f - (index / 2) * 43f
         towerCard(type, index + 1, x, y, simulation.gold, buildType == type, choose)
     }
     button("Enemies [G]", 922f, 330f, 124f, 32f, scale = 0.8f) { openEnemyGuide() }
@@ -54,9 +54,9 @@ private fun HudCanvas.towerCard(
     type: TowerType, key: Int, x: Float, y: Float, gold: Int, selected: Boolean, choose: (TowerType) -> Unit,
 ) {
     val accent = towerColor(type)
-    button("[$key] ${type.title}", x, y, 124f, 49f, accent = accent, scale = 0.84f,
-        selected = selected, labelOffsetY = 8f) { choose(type) }
-    text("${type.cost}g", x + 12f, y + 17f, 0.70f, if (gold >= type.cost) GOLD else MUTED)
+    button("[$key] ${type.title}", x, y, 124f, 38f, accent = accent, scale = 0.84f,
+        selected = selected, labelOffsetY = 7f) { choose(type) }
+    text("${type.cost}g", x + 12f, y + 13f, 0.70f, if (gold >= type.cost) GOLD else MUTED)
 }
 
 private fun HudCanvas.buildPanel(type: TowerType, cancelPlacement: () -> Unit) {
