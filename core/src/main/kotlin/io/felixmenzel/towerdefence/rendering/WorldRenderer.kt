@@ -18,6 +18,7 @@ import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.HEALTH
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.REGENERATION
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.SHIELD
 import io.felixmenzel.towerdefence.simulation.BattleMap
+import io.felixmenzel.towerdefence.simulation.Bastion
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.GameSimulation
@@ -176,6 +177,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         drawPath(simulation.path, 48f, palette.laneEdge)
         drawPath(simulation.path, 42f, palette.lane)
         drawPath(simulation.path, 26f, palette.laneCenter)
+        if (simulation.showBossWindows) drawBossWindows(simulation.path)
         shapes.color = palette.laneMark
         val path = simulation.path
         for (index in 0 until path.lastIndex) {
@@ -223,6 +225,31 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         shapes.color = RELAY_PALETTE.majorGrid
         shapes.rectLine(630f, 504f, 874f, 504f, 1f)
         shapes.rectLine(874f, 504f, 874f, 535f, 1f)
+    }
+
+    private fun drawBossWindows(path: List<Waypoint>) {
+        var offset = 0.0
+        shapes.color = BOSS_EXPOSED
+        for ((from, to) in path.zipWithNext()) {
+            val dx = to.x - from.x
+            val dy = to.y - from.y
+            val length = sqrt(dx * dx + dy * dy)
+            if (length == 0.0) continue
+            for (window in Bastion.windows) {
+                val start = maxOf(0.0, window.start - offset)
+                val end = minOf(length, window.endInclusive - offset)
+                if (end <= start) continue
+                val ux = dx / length
+                val uy = dy / length
+                for (side in -1..1 step 2) {
+                    val x = from.x - uy * 16 * side
+                    val y = from.y + ux * 16 * side
+                    shapes.rectLine((x + start * ux).toFloat(), (y + start * uy).toFloat(),
+                        (x + end * ux).toFloat(), (y + end * uy).toFloat(), 2.5f)
+                }
+            }
+            offset += length
+        }
     }
 
     private fun drawPath(path: List<Waypoint>, width: Float, color: Color) {
@@ -403,12 +430,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.color = towerColor(TowerType.BEACON)
             shapes.triangle(x - 4f, y - 19f, x + 4f, y - 19f, x, y - 13f)
         }
-        val radius = when (enemy.type) {
+        val radius = if (enemy.isBoss) 20f else when (enemy.type) {
             EnemyType.ARMORED, EnemyType.PLATED, EnemyType.VANGUARD -> 13f
             EnemyType.FAST -> 9f
             else -> 11f
         }
-        val baseColor = when (enemy.type) {
+        val baseColor = if (enemy.isBoss) {
+            if (enemy.bossExposed) BOSS_EXPOSED else BOSS_PROTECTED
+        } else when (enemy.type) {
             EnemyType.ARMORED -> ORANGE
             EnemyType.FAST -> MAGENTA
             EnemyType.NORMAL -> CORAL
@@ -428,7 +457,10 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.color = PANEL
                 hexagon(x, y, radius - 4f)
                 shapes.color = color
-                shapes.rect(x - 4f, y - 4f, 8f, 8f)
+                if (enemy.isBoss) {
+                    diamond(x, y, 10f)
+                    if (!enemy.bossExposed) ring(x, y, 23f, 2f, BOSS_PROTECTED)
+                } else shapes.rect(x - 4f, y - 4f, 8f, 8f)
             }
             EnemyType.FAST -> drawRunner(x, y, enemy, simulation)
             EnemyType.NORMAL -> {
@@ -471,7 +503,11 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val x = enemy.interpolatedX(alpha).toFloat()
         val y = enemy.interpolatedY(alpha).toFloat()
         val health = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
-        drawDefenseMeter(x - 15f, y + 19f, 4f, health, if (health < 0.3f) CORAL else HEALTH, BORDER)
+        val healthColor = if (health < 0.3f) CORAL else HEALTH
+        if (enemy.isBoss) {
+            val phaseColor = if (enemy.bossExposed) BOSS_EXPOSED else BOSS_PROTECTED
+            drawDefenseMeter(x - 15f, y + 27f, 5f, health, healthColor, phaseColor)
+        } else drawDefenseMeter(x - 15f, y + 19f, 4f, health, healthColor, BORDER)
 
         val hasShield = enemy.maxShield > 0.0
         if (hasShield) {
@@ -580,7 +616,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 jumpY = jump.y.toFloat()
             }
             val radius = when (shot.type) {
-                TowerType.CANNON -> 8f + age * (Tower.SPLASH_RADIUS.toFloat() - 8f)
+                TowerType.CANNON -> 8f + age * (shot.cannonSplashRadius.toFloat() - 8f)
                 TowerType.FROST -> 5f + age * 17f
                 TowerType.RAIL -> 4f + age * 13f
                 TowerType.BEACON -> 8f + age * 10f
@@ -766,6 +802,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")
         val ELITE = Color.valueOf("ffe08a")
+        val BOSS_EXPOSED = Color.valueOf("ffcb6e")
+        val BOSS_PROTECTED = Color.valueOf("e5a0fc")
         val DEFENSE_TRACK = Color.valueOf("080d17")
         val SHIELD_TRACK_EDGE = Color.valueOf("3c7383")
         val MUTED = Color.valueOf("9aafc6")

@@ -12,6 +12,7 @@ import com.badlogic.gdx.utils.viewport.FitViewport
 import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.simulation.ActionResult
+import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.FieldProfile
 import io.felixmenzel.towerdefence.simulation.FixedStepLoop
 import io.felixmenzel.towerdefence.simulation.GameSimulation
@@ -22,7 +23,7 @@ import io.felixmenzel.towerdefence.simulation.RemixRecords
 import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
-import io.felixmenzel.towerdefence.simulation.Waves
+import io.felixmenzel.towerdefence.simulation.MissionMode
 import io.felixmenzel.towerdefence.ui.HudPalette.BACKGROUND
 import io.felixmenzel.towerdefence.ui.HudPalette.BORDER
 import io.felixmenzel.towerdefence.ui.HudPalette.CYAN
@@ -72,6 +73,7 @@ class DefenseScreen(
     private var pendingMap = simulation.battleMap
     private var pendingDifficulty = simulation.difficulty
     private var pendingSeed = simulation.seed
+    private var pendingMode = simulation.mode
     private var pendingModule = simulation.tremorModule
     private var setupFeedback = ""
     private var setupError = false
@@ -371,6 +373,7 @@ class DefenseScreen(
         if (simulation.fieldRank != profile.rank) {
             simulation = GameSimulation(
                 simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank, simulation.tremorModule,
+                simulation.mode,
             )
         } else simulation.restart()
         resetMissionInterface()
@@ -398,6 +401,7 @@ class DefenseScreen(
         pendingMap = simulation.battleMap
         pendingDifficulty = simulation.difficulty
         pendingSeed = simulation.seed
+        pendingMode = simulation.mode
         pendingModule = simulation.tremorModule
         setupFeedback = ""
         setupError = false
@@ -440,6 +444,7 @@ class DefenseScreen(
             setupError = true
             return
         }
+        pendingMode = MissionMode.CAMPAIGN
         pendingMap = challenge.map
         pendingDifficulty = challenge.difficulty
         pendingSeed = challenge.seed
@@ -452,9 +457,17 @@ class DefenseScreen(
         pendingModule = modules[(pendingModule.ordinal + 1) % modules.size]
     }
 
+    private fun toggleQuickMission() {
+        pendingMode = if (pendingMode == MissionMode.QUICK) MissionMode.CAMPAIGN else MissionMode.QUICK
+        if (pendingMode == MissionMode.QUICK) {
+            pendingMap = BattleMap.CORRIDOR
+            pendingSeed = null
+        }
+    }
+
     private fun launchMission() {
         if (!clearCheckpoint()) return
-        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule)
+        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule, pendingMode)
         resetMissionInterface()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -495,7 +508,8 @@ class DefenseScreen(
         rect(0f, 638f, WIDTH, 2f, BORDER)
         rect(900f, 80f, 2f, 560f, BORDER)
         text("BRE / TOWER DEFENCE", 24f, 703f, 1.2f, WHITE)
-        text("${simulation.battleMap.title.uppercase()} / ${simulation.difficulty.title.uppercase()}", 25f, 667f, 0.75f, MUTED)
+        val missionTitle = if (simulation.mode == MissionMode.QUICK) "QUICK / CORRIDOR" else simulation.battleMap.title.uppercase()
+        text("$missionTitle / ${simulation.difficulty.title.uppercase()}", 25f, 667f, 0.75f, MUTED)
         button("Mission [M]", 250f, 650f, 117f, 30f, scale = 0.8f) { openMissionSetup() }
         stat("GOLD", simulation.gold.toString(), 386f, GOLD)
         stat("BASE", "${simulation.lives} / ${simulation.difficulty.startingLives}", 523f, if (simulation.lives <= 5) RED else CYAN)
@@ -518,7 +532,7 @@ class DefenseScreen(
 
         val preparing = simulation.state == GameState.PREPARING
         val briefedWave = if (preparing) simulation.wave + 1 else simulation.wave
-        val waveTitle = Waves.name(briefedWave)?.let { " / ${it.uppercase()}" }.orEmpty()
+        val waveTitle = simulation.waveName(briefedWave)?.let { " / ${it.uppercase()}" }.orEmpty()
         val waveHeading = if (preparing) "NEXT / WAVE $briefedWave" else "WAVE $briefedWave"
         val eliteWave = !preparing && simulation.eliteActive
         val eliteLabel = if (eliteWave) " / ELITE" else ""
@@ -562,6 +576,10 @@ class DefenseScreen(
                 val healthBonus = ((GameSimulation.ELITE_HEALTH_MULTIPLIER - 1.0) * 100).toInt()
                 "Optional: ${GameSimulation.ELITE_COUNT} enemies gain $healthBonus% health. Clear for +${GameSimulation.ELITE_REWARD}g."
             }
+            simulation.activeBoss != null -> if (simulation.activeBoss?.bossExposed == true) {
+                "Bastion exposed: damage is no longer reduced."
+            } else "Bastion protected: deal full damage in the marked lanes."
+            preparing && simulation.showBossWindows -> "Bastion must fall before the core. Build near the two marked damage windows."
             simulation.wave == 0 -> message
             else -> "Open the enemy guide [G] to check enemy abilities and counters."
         }
@@ -595,7 +613,7 @@ class DefenseScreen(
             return
         }
         if (reportOpen) {
-            drawWaveReport(simulation.waveReports, ::closeWaveReport)
+            drawWaveReport(simulation.waveReports, simulation.totalWaves, ::closeWaveReport)
             return
         }
         if (enemyGuide) {
@@ -604,12 +622,17 @@ class DefenseScreen(
         }
         if (missionSetup && !missionLaunchConfirmation) {
             drawMissionSetup(
-                pendingMap, pendingDifficulty, pendingSeed,
-                pendingModule, profile.rank, pendingChallenge()?.let(records::best), setupFeedback, setupError,
-                selectMap = { pendingMap = it },
+                pendingMap, pendingDifficulty, pendingSeed, pendingMode,
+                pendingModule, profile.rank,
+                if (pendingMode == MissionMode.QUICK) records.quickBest(pendingDifficulty) else pendingChallenge()?.let(records::best),
+                setupFeedback, setupError,
+                selectMap = { if (pendingMode.supports(it, pendingSeed)) pendingMap = it },
                 selectDifficulty = { pendingDifficulty = it },
-                toggleRemix = { pendingSeed = if (pendingSeed == null) newSeed() else null },
-                reroll = { pendingSeed = newSeed() },
+                toggleRemix = {
+                    if (pendingMode == MissionMode.CAMPAIGN) pendingSeed = if (pendingSeed == null) newSeed() else null
+                },
+                reroll = { if (pendingMode == MissionMode.CAMPAIGN) pendingSeed = newSeed() },
+                toggleQuick = ::toggleQuickMission,
                 cycleModule = ::cycleModule,
                 copyCode = ::copyChallenge,
                 importCode = ::importChallenge,
@@ -638,7 +661,8 @@ class DefenseScreen(
             }
             simulation.state == GameState.LOST -> {
                 title = "BASE OVERRUN"
-                subtitle = "You reached wave ${simulation.wave}. Rebuild, mix your towers and try again."
+                subtitle = if (simulation.bossBreached) "Bastion reached the core. Build near the marked damage windows."
+                    else "You reached wave ${simulation.wave}. Rebuild, mix your towers and try again."
             }
             else -> {
                 title = "DEFENCE PAUSED"
@@ -664,7 +688,10 @@ class DefenseScreen(
             val unlockLabel = unlocks.joinToString()
             text(if (unlockLabel.isEmpty()) xpLabel else "$xpLabel  /  Unlocked $unlockLabel",
                 182f, 336f, 0.92f, GOLD, 636f)
-            if (newRemixBest) text("New local Remix best", 182f, 252f, 0.87f, CYAN)
+            if (newRemixBest) {
+                val mode = if (simulation.mode == MissionMode.QUICK) "Quick mission" else "Remix"
+                text("New local best / $mode", 182f, 252f, 0.87f, CYAN)
+            }
             button("Retry mission [Enter / R]", 182f, 267f, 300f, 52f, accent = CYAN) { restart() }
             button("Choose mission [M]", 502f, 267f, 300f, 52f) { openMissionSetup() }
             waveReportButton()
@@ -684,7 +711,8 @@ class DefenseScreen(
         rect(140f, 205f, 720f, 315f, OVERLAY)
         rect(140f, 516f, 720f, 4f, CYAN)
         text("CONTINUE DEFENCE?", 182f, 473f, 1.85f, WHITE)
-        val mode = saved.challenge?.let { " / Remix ${it.seed}" }.orEmpty()
+        val mode = if (saved.mode == MissionMode.QUICK) " / Quick"
+        else saved.challenge?.let { " / Remix ${it.seed}" }.orEmpty()
         text("${saved.battleMap.title} / ${saved.difficulty.title}$mode", 182f, 421f, 1f, MUTED, 636f)
         text("Before wave ${saved.wave + 1} / ${saved.lives} lives / ${saved.gold}g", 182f, 384f, 0.95f, CYAN)
         button("Continue [Enter]", 182f, 267f, 300f, 52f, accent = CYAN) { continueMission() }

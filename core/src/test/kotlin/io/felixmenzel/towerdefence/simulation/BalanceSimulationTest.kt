@@ -74,6 +74,15 @@ class BalanceSimulationTest {
     }
 
     @Test
+    fun `the quick mission has a winning mixed defense on every difficulty`() {
+        for (difficulty in Difficulty.entries) {
+            val game = playCampaign(GameSimulation(difficulty = difficulty, mode = MissionMode.QUICK), prepare = ::fortify)
+            assertEquals(GameState.WON, game.state, difficulty.title)
+            assertEquals(6, game.wave)
+        }
+    }
+
+    @Test
     fun `twin locks remix can be cleared on veteran using the unlocked tremor`() {
         val plan = twinLocksPlan + Placement(TowerType.TREMOR, 545.0, 350.0)
         val game = playCampaign(GameSimulation(BattleMap.TWIN_LOCKS, Difficulty.VETERAN, seed = 583471, fieldRank = 2)) {
@@ -130,13 +139,16 @@ class BalanceSimulationTest {
     }
 
     @Test
-    fun `late assaults reward expanding beyond a smaller defense on veteran`() {
+    fun `late waves before the finale reward expanding beyond a smaller defense on veteran`() {
         for (map in listOf(BattleMap.CORRIDOR, BattleMap.SWITCHBACK)) {
-            fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty)) {
+            val beforeFinale = GameSimulation.TOTAL_WAVES - 1
+            fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty), throughWave = beforeFinale) {
                 fortifyUsing(it, planFor(map).take(8))
             }
 
-            assertEquals(GameState.WON, play(Difficulty.NORMAL).state, "$map on Normal")
+            val normal = play(Difficulty.NORMAL)
+            assertEquals(GameState.PREPARING, normal.state, "$map on Normal")
+            assertEquals(beforeFinale, normal.wave)
             val veteran = play(Difficulty.VETERAN)
             assertEquals(GameState.LOST, veteran.state, "$map on Veteran")
             assertTrue(veteran.wave > 10, "$map should survive the opening with this plan")

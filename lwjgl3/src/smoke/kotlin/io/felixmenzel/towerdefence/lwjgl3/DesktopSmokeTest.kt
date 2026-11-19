@@ -18,7 +18,9 @@ import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.Main
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
+import io.felixmenzel.towerdefence.simulation.CannonSpecialization
 import io.felixmenzel.towerdefence.simulation.GameSimulation
+import io.felixmenzel.towerdefence.simulation.MissionMode
 import io.felixmenzel.towerdefence.simulation.Waypoint
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
@@ -342,9 +344,30 @@ object DesktopSmokeTest {
                     simulation.update()
                     check(simulation.enemies.single().isElite)
                 }
-                312 -> {
+                312 -> key(Input.Keys.M)
+                313 -> {
+                    click(685f, 220f) // Quick mission.
+                    click(332f, 184f)
+                }
+                314 -> {
+                    click(332f, 293f) // Confirm replacing the live campaign.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.mode == MissionMode.QUICK && simulation.totalWaves == 6 && simulation.gold == 330)
+                    key(Input.Keys.NUM_2)
+                    click(150f, 230f + DefenseScreen.BOARD_Y)
+                    key(Input.Keys.U)
+                    finishNextWaveForFixture()
+                    key(Input.Keys.U)
+                    check(simulation.towers.single().level == 3)
+                }
+                315 -> {
+                    click(978f, 204f) // Choose Wide in the Cannon inspector.
+                    check(simulation.towers.single().cannonSpecialization == CannonSpecialization.WIDE)
+                    writeScreenshot("-quick-mission")
+                }
+                316 -> {
                     screenshotWritten = true
-                    println("Desktop smoke passed: controls, rendering, mission and Remix settings, progression, mission report, checkpoint reload, and optional elites.")
+                    println("Desktop smoke passed: controls, rendering, mission and Remix settings, progression, mission report, checkpoint reload, optional elites, Quick mission, and Cannon specialization.")
                     Gdx.app.exit()
                 }
             }

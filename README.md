@@ -28,6 +28,12 @@ On **Twin Locks**, press **V** between waves to switch paths. Both routes remain
 
 Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive 15 waves to win. The final five preview named formations built around shields, armor, regeneration and mixed assaults.
 
+The Corridor's campaign finale adds **Bastion**. Two gold-marked stretches drop its violet protection. If it reaches the core, the mission ends in defeat.
+
+Choose **Quick mission / 6 waves** in Mission Setup for a fixed 330-gold start and mixed squads on The Corridor. Quick missions have separate local bests for each difficulty.
+
+Once a **Cannon** reaches level 3, you can specialize it once. Wide trades firing rate for splash radius. Rapid fires more often with a smaller blast. Echoes retain each shot's recorded radius.
+
 Before wave 8, opt into **Elite [B]** to face three opening enemies with 60% more health. Yellow brackets mark Elites. Clearing that wave awards 90 extra gold.
 
 The game keeps one local checkpoint between waves. Choose **Continue** at startup to restore your towers, wave state and pending echo. If you quit during combat, you resume from before that wave. Open **Wave report [L]** to see escapes and echo hits wave by wave.

@@ -12,6 +12,7 @@ class Enemy(
     val type: EnemyType = EnemyType.NORMAL,
     val bounty: Int = type.bounty,
     val isElite: Boolean = false,
+    val isBoss: Boolean = false,
 ) {
     private val path = path.toList()
 
@@ -34,6 +35,7 @@ class Enemy(
         private set
     private var nextWaypointIndex = 1
     val hasReachedGoal: Boolean get() = nextWaypointIndex >= path.size
+    val bossExposed: Boolean get() = isBoss && Bastion.windows.any { distanceTravelled in it }
     var health = maxHealth
         private set
     val isAlive: Boolean get() = health > 0.0
@@ -107,7 +109,8 @@ class Enemy(
         if (damage == 0.0 || !isAlive) return
         recoveryDelay = 1.5
         val incoming = damage * (if (markedSeconds > 0.0) 1.25 else 1.0) *
-            (if (piercesArmor) 1.0 else type.damageMultiplier)
+            (if (piercesArmor) 1.0 else type.damageMultiplier) *
+            (if (isBoss && !bossExposed) Bastion.PROTECTED_DAMAGE_MULTIPLIER else 1.0)
         val absorbed = min(shield, incoming * shieldMultiplier)
         shield -= absorbed
         // Only damage spent against the shield gains the bonus; overflow uses the normal rate.

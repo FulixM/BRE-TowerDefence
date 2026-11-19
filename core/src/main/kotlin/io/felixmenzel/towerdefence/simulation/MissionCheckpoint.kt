@@ -29,6 +29,7 @@ internal data class MissionCheckpoint(
     val towers: List<TowerCheckpoint>,
     val echo: EchoCheckpoint,
     val reports: List<WaveReport>,
+    val mode: MissionMode = MissionMode.CAMPAIGN,
 )
 
 internal data class TowerCheckpoint(
@@ -39,6 +40,7 @@ internal data class TowerCheckpoint(
     val level: Int,
     val priority: TargetPriority,
     val nextAttackTick: Long,
+    val cannonSpecialization: CannonSpecialization = CannonSpecialization.STANDARD,
 )
 
 internal data class EchoCheckpoint(val armedTowerId: Long?, val impacts: List<RecordedImpact>)
@@ -63,7 +65,7 @@ class MissionSaves(
 }
 
 private object MissionCheckpointCodec {
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val MAX_ENCODED_LENGTH = 1_000_000
     private const val MAX_TOWERS = 512
     private const val MAX_IMPACTS = 4096
@@ -134,10 +136,12 @@ private object MissionCheckpointCodec {
             writeBoolean(report.elite)
             writeBoolean(report.cleared)
         }
+        writeUTF(checkpoint.mode.name)
     }
 
     private fun DataInputStream.readCheckpoint(): MissionCheckpoint {
-        require(readInt() == VERSION)
+        val version = readInt()
+        require(version in 1..VERSION)
         val map = BattleMap.valueOf(readUTF())
         val difficulty = Difficulty.valueOf(readUTF())
         val seed = if (readFlag()) readInt() else null
@@ -153,7 +157,7 @@ private object MissionCheckpointCodec {
         val nextEnemyId = readLong()
         val nextTowerId = readLong()
         val eliteOffered = readFlag()
-        val towers = boundedList(MAX_TOWERS) { readTower() }
+        val towers = boundedList(MAX_TOWERS) { readTower(version) }
         val armedTowerId = readLong().takeUnless { it == 0L }
         val echo = EchoCheckpoint(armedTowerId, boundedList(MAX_IMPACTS) { readImpact() })
         val reports = boundedList(GameSimulation.TOTAL_WAVES) {
@@ -162,6 +166,7 @@ private object MissionCheckpointCodec {
         return MissionCheckpoint(
             map, difficulty, seed, fieldRank, tremorModule, useUpperRoute, tick, wave, gold, lives,
             kills, leaked, nextEnemyId, nextTowerId, eliteOffered, towers, echo, reports,
+            if (version == 1) MissionMode.CAMPAIGN else MissionMode.valueOf(readUTF()),
         )
     }
 
@@ -173,11 +178,13 @@ private object MissionCheckpointCodec {
         writeInt(tower.level)
         writeUTF(tower.priority.name)
         writeLong(tower.nextAttackTick)
+        writeUTF(tower.cannonSpecialization.name)
     }
 
-    private fun DataInputStream.readTower() = TowerCheckpoint(
+    private fun DataInputStream.readTower(version: Int) = TowerCheckpoint(
         readLong(), TowerType.valueOf(readUTF()), readDouble(), readDouble(), readInt(),
         TargetPriority.valueOf(readUTF()), readLong(),
+        if (version == 1) CannonSpecialization.STANDARD else CannonSpecialization.valueOf(readUTF()),
     )
 
     private fun DataOutputStream.writeImpact(impact: RecordedImpact) {
@@ -228,7 +235,7 @@ private object MissionCheckpointCodec {
     }
 
     private fun MissionCheckpoint.isValid(): Boolean {
-        if (wave !in 0 until GameSimulation.TOTAL_WAVES || tick !in 0..Long.MAX_VALUE / 2) return false
+        if (!mode.supports(map, seed) || wave !in 0 until mode.waveCount || tick !in 0..Long.MAX_VALUE / 2) return false
         if (gold < 0 || lives !in 1..difficulty.startingLives || kills < 0 || leaked < 0) return false
         if (fieldRank < 1 || (fieldRank < TremorModule.REQUIRED_RANK && tremorModule != TremorModule.STANDARD)) return false
         if (useUpperRoute && map.alternatePath == null) return false
@@ -239,7 +246,9 @@ private object MissionCheckpointCodec {
         if (towers.any { tower ->
                 tower.id !in 1 until nextTowerId || tower.level !in 1..Tower.MAX_LEVEL ||
                     tower.type.requiredRank > fieldRank || !onBoard(tower.x, tower.y, GameSimulation.BUILD_MARGIN) ||
-                    tower.nextAttackTick !in 0..tick + tower.type.baseAttackIntervalTicks
+                    tower.nextAttackTick !in 0..tick + tower.type.baseAttackIntervalTicks ||
+                    tower.cannonSpecialization != CannonSpecialization.STANDARD &&
+                        (tower.type != TowerType.CANNON || tower.level != Tower.MAX_LEVEL)
             }
         ) return false
 
