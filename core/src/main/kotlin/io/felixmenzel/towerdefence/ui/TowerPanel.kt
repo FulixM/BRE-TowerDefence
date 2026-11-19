@@ -30,10 +30,14 @@ internal fun HudCanvas.drawTowerPanel(
     choose: (TowerType) -> Unit,
     openEnemyGuide: () -> Unit,
     cancelPlacement: () -> Unit,
+    undoBuild: () -> Unit,
     report: (ActionResult) -> Unit,
     sell: (Tower) -> Unit,
 ) {
     text("BUILD TOWERS", 922f, 614f, 1f, WHITE)
+    simulation.lastBuildRefund?.let { refund ->
+        button("Undo [Z] / +${refund}g", 1047f, 595f, 129f, 25f, accent = GOLD, scale = 0.72f, action = undoBuild)
+    }
     for ((index, type) in TowerType.entries.withIndex()) {
         val x = 922f + (index % 2) * 130f
         val y = 552f - (index / 2) * 43f

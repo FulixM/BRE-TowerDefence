@@ -197,13 +197,25 @@ object DesktopSmokeTest {
                     check(simulation.towers.size == 2 && simulation.gold == gold - 2 * TowerType.RAPID.cost)
                     check(privateField<TowerType?>(screen, "buildType") == null)
                     check(privateField<Long?>(screen, "selectedTowerId") == simulation.towers.last().id)
+                }
+                6 -> {
+                    val gold = simulation.gold
+                    click(1111f, 607f)
+                    check(simulation.towers.size == 1 && simulation.gold == gold + TowerType.RAPID.cost)
+                    check(privateField<Long?>(screen, "selectedTowerId") == null)
+                    key(Input.Keys.NUM_1)
+                    click(450f, 250f + DefenseScreen.BOARD_Y)
+                    key(Input.Keys.Z)
+                    check(simulation.towers.size == 1 && simulation.gold == gold + TowerType.RAPID.cost)
+                }
+                7 -> {
                     frozenTick = simulation.tick
                     key(Input.Keys.R)
                 }
                 8 -> {
                     check(simulation.tick == frozenTick) { "Restart confirmation did not freeze simulation" }
                     key(Input.Keys.ESCAPE)
-                    check(simulation.towers.size == 2)
+                    check(simulation.towers.size == 1)
                 }
                 9 -> {
                     key(Input.Keys.R)

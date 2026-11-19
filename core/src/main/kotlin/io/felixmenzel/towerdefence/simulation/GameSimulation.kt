@@ -92,6 +92,13 @@ class GameSimulation(
     val nextWaveDescription: String get() = waveDescription((wave + 1).coerceAtMost(totalWaves))
     private var nextEnemyId = 1L
     private var nextTowerId = 1L
+    private var lastBuildUndoable = false
+
+    val lastBuildRefund: Int?
+        get() = undoableTower?.type?.cost
+
+    private val undoableTower: Tower?
+        get() = if (state == GameState.PREPARING && lastBuildUndoable) mutableTowers.lastOrNull() else null
     private var spawnedThisWave = 0
     private var nextSpawnTick = 0L
     internal val echo = WaveEcho(terrain)
@@ -154,6 +161,7 @@ class GameSimulation(
 
     fun startWave(): ActionResult {
         if (state != GameState.PREPARING) return ActionResult(false, "Finish the current wave first")
+        lastBuildUndoable = false
         wave++
         eliteActive = eliteOffered
         eliteOffered = false
@@ -192,6 +200,7 @@ class GameSimulation(
         val tower = createTower(type, position.x, position.y, nextTowerId++)
         mutableTowers += tower
         gold -= type.cost
+        lastBuildUndoable = state == GameState.PREPARING
         return ActionResult(true, "${type.title} built", tower.id)
     }
 
@@ -207,6 +216,7 @@ class GameSimulation(
         if (gold < cost) return ActionResult(false, "Need $cost gold to upgrade", id)
         gold -= cost
         tower.upgrade()
+        invalidateBuildUndo(id)
         return ActionResult(true, "${tower.type.title} upgraded to level ${tower.level}", id)
     }
 
@@ -221,6 +231,7 @@ class GameSimulation(
         if (!canManageTowers()) return ActionResult(false, "Restart to change targeting again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         tower.cycleTargetPriority()
+        invalidateBuildUndo(id)
         return ActionResult(true, "${tower.type.title} targets ${tower.targetPriority.title.lowercase()}", id)
     }
 
@@ -230,6 +241,7 @@ class GameSimulation(
         }
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         val armed = echo.toggleTower(tower.id)
+        invalidateBuildUndo(id)
         val message = if (armed) "${tower.type.title} will record wave ${wave + 1} and echo in wave ${wave + 2}"
             else "Echo recording disarmed"
         return ActionResult(true, message, id)
@@ -239,9 +251,23 @@ class GameSimulation(
         if (!canManageTowers()) return ActionResult(false, "Restart to sell again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         gold += tower.sellValue
+        invalidateBuildUndo(id)
         mutableTowers.remove(tower)
         echo.onTowerSold(id)
         return ActionResult(true, "Sold for ${tower.sellValue} gold")
+    }
+
+    fun undoLastBuild(): ActionResult {
+        val tower = undoableTower ?: return ActionResult(false, "No new build to undo before the next wave")
+        val refund = tower.type.cost
+        gold += refund
+        mutableTowers.removeAt(mutableTowers.lastIndex)
+        lastBuildUndoable = false
+        return ActionResult(true, "${tower.type.title} build undone / +${refund} gold", tower.id)
+    }
+
+    private fun invalidateBuildUndo(id: Long) {
+        if (id == nextTowerId - 1L) lastBuildUndoable = false
     }
 
     internal fun buildPosition(x: Double, y: Double): Waypoint? =
@@ -296,6 +322,7 @@ class GameSimulation(
             battleMap, difficulty, seed, fieldRank, tremorModule, useUpperRoute,
             tick, wave, gold, lives, kills, leakedEnemies, nextEnemyId, nextTowerId, eliteOffered,
             mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule, research, elevatedTerrain, gridPlacement,
+            lastBuildUndoable,
         )
     }
 
@@ -321,6 +348,7 @@ class GameSimulation(
         remainingToSpawn = 0
         nextEnemyId = 1L
         nextTowerId = 1L
+        lastBuildUndoable = false
         spawnedThisWave = 0
         nextSpawnTick = 0L
     }
@@ -410,6 +438,7 @@ class GameSimulation(
                 game.mutableTowers += game.createTower(tower.type, tower.x, tower.y, tower.id).also { it.restore(tower) }
                 previousTowerId = tower.id
             }
+            if (save.lastBuildUndoable && !save.hasUndoableBuild()) return null
             val armedId = save.echo.armedTowerId
             if (armedId != null && (save.wave >= game.totalWaves - 1 || game.towers.none { it.id == armedId })) return null
 
@@ -421,6 +450,7 @@ class GameSimulation(
             game.leakedEnemies = save.leaked
             game.nextEnemyId = save.nextEnemyId
             game.nextTowerId = save.nextTowerId
+            game.lastBuildUndoable = save.lastBuildUndoable
             game.useUpperRoute = save.useUpperRoute
             game.eliteOffered = save.eliteOffered
             game.eliteActive = save.reports.lastOrNull()?.elite == true
