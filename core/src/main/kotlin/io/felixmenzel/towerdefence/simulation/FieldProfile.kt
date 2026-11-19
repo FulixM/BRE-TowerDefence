@@ -8,18 +8,24 @@ class FieldProfile(initialXp: Int = 0, private val saveXp: (Int) -> Unit = {}) {
     val rankXp: Int get() = xp % XP_PER_RANK
 
     internal fun award(state: GameState, wave: Int): Int {
+        val total = totalAfterMission(state, wave)
+        if (total > xp) saveXp(total)
+        return applyTotal(total)
+    }
+
+    internal fun totalAfterMission(state: GameState, wave: Int): Int {
         val cleared = when (state) {
             GameState.WON -> wave
             GameState.LOST -> (wave - 1).coerceAtLeast(0)
-            else -> return 0
+            else -> return xp
         }
         val reward = cleared * 20 + if (state == GameState.WON) 100 else 0
-        val updated = (xp.toLong() + reward).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        val earned = updated - xp
-        if (earned > 0) {
-            saveXp(updated)
-            xp = updated
-        }
+        return (xp.toLong() + reward).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    }
+
+    internal fun applyTotal(total: Int): Int {
+        val earned = total - xp
+        xp = total
         return earned
     }
 

@@ -24,6 +24,8 @@ class GameSimulation(
     val enemies: List<Enemy> = Collections.unmodifiableList(mutableEnemies)
     val towers: List<Tower> = Collections.unmodifiableList(mutableTowers)
     val shots: List<Shot> = Collections.unmodifiableList(mutableShots)
+    private val mutableWaveReports = mutableListOf<WaveReport>()
+    val waveReports: List<WaveReport> = Collections.unmodifiableList(mutableWaveReports)
     var tick = 0L
         private set
     var gold = difficulty.startingGold
@@ -42,7 +44,15 @@ class GameSimulation(
         private set
     var remainingToSpawn = 0
         private set
-    val waveReward: Int get() = 25 + wave * 5
+    var eliteOffered = false
+        private set
+    var eliteActive = false
+        private set
+    val canOfferElite: Boolean get() = state == GameState.PREPARING && wave + 1 == ELITE_WAVE
+    val waveReward: Int get() = rewardFor(wave, eliteActive)
+    val nextWaveReward: Int get() = rewardFor(wave + 1, eliteOffered)
+    private var waveLeaks = 0
+    private var waveEchoHits = 0
     val nextWaveDescription: String get() = waveDescription((wave + 1).coerceAtMost(totalWaves))
     private var nextEnemyId = 1L
     private var nextTowerId = 1L
@@ -65,10 +75,12 @@ class GameSimulation(
         val escaped = mutableEnemies.count { it.isAlive && it.hasReachedGoal }
         if (escaped > 0) {
             leakedEnemies += escaped
+            waveLeaks += escaped
             lives = (lives - escaped).coerceAtLeast(0)
             mutableEnemies.removeAll { it.isAlive && it.hasReachedGoal }
         }
         if (lives == 0) {
+            recordWave(cleared = false)
             state = GameState.LOST
             remainingToSpawn = 0
             mutableShots.clear()
@@ -80,13 +92,18 @@ class GameSimulation(
             mutableShots.add(shot)
             echo.record(tower, shot)
         }
-        echo.replay(tick, mutableEnemies, mutableShots)
+        waveEchoHits += echo.replay(tick, mutableEnemies, mutableShots)
         collectDefeatedEnemies()
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
+            recordWave(cleared = true)
             state = if (wave == totalWaves) GameState.WON else GameState.PREPARING
             if (state == GameState.WON) echo.reset() else echo.finishWave()
         }
+    }
+
+    private fun recordWave(cleared: Boolean) {
+        mutableWaveReports += WaveReport(wave, waveLeaks, waveEchoHits, eliteActive, cleared)
     }
 
     private fun collectDefeatedEnemies() {
@@ -101,12 +118,23 @@ class GameSimulation(
     fun startWave(): ActionResult {
         if (state != GameState.PREPARING) return ActionResult(false, "Finish the current wave first")
         wave++
+        eliteActive = eliteOffered
+        eliteOffered = false
+        waveLeaks = 0
+        waveEchoHits = 0
         echo.startWave(tick)
         spawnedThisWave = 0
         remainingToSpawn = waves[wave - 1].enemies.size
         nextSpawnTick = tick + 1L
         state = GameState.RUNNING
         return ActionResult(true, "Wave $wave incoming")
+    }
+
+    fun toggleElite(): ActionResult {
+        if (!canOfferElite) return ActionResult(false, "Choose Elite while preparing wave $ELITE_WAVE")
+        eliteOffered = !eliteOffered
+        return ActionResult(true, if (eliteOffered) "Elite accepted: clear wave $ELITE_WAVE for +${ELITE_REWARD}g"
+            else "Elite declined: standard wave $ELITE_WAVE")
     }
 
     fun switchRoute(): ActionResult {
@@ -123,12 +151,15 @@ class GameSimulation(
         if (!isUnlocked(type)) return ActionResult(false, "${type.title} unlocks at field rank ${type.requiredRank}")
         placementError(x, y)?.let { return ActionResult(false, it) }
         if (gold < type.cost) return ActionResult(false, "Need ${type.cost} gold for ${type.title}")
-        val tower = Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks,
-            nextTowerId++, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD)
+        val tower = createTower(type, x, y, nextTowerId++)
         mutableTowers += tower
         gold -= type.cost
         return ActionResult(true, "${type.title} built", tower.id)
     }
+
+    private fun createTower(type: TowerType, x: Double, y: Double, id: Long): Tower =
+        Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks,
+            id, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD)
 
     fun upgradeTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to upgrade again")
@@ -187,11 +218,25 @@ class GameSimulation(
         return waves[waveNumber - 1].description
     }
 
+    internal fun checkpoint(): MissionCheckpoint? {
+        if (state != GameState.PREPARING || wave == 0 && nextTowerId == 1L && !useUpperRoute) return null
+        return MissionCheckpoint(
+            battleMap, difficulty, seed, fieldRank, tremorModule, useUpperRoute,
+            tick, wave, gold, lives, kills, leakedEnemies, nextEnemyId, nextTowerId, eliteOffered,
+            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(),
+        )
+    }
+
     fun restart() {
         mutableEnemies.clear()
         mutableTowers.clear()
         mutableShots.clear()
+        mutableWaveReports.clear()
         echo.reset()
+        eliteOffered = false
+        eliteActive = false
+        waveLeaks = 0
+        waveEchoHits = 0
         tick = 0L
         gold = difficulty.startingGold
         lives = difficulty.startingLives
@@ -211,8 +256,10 @@ class GameSimulation(
 
     private fun spawnEnemy() {
         val type = waves[wave - 1].enemies[spawnedThisWave]
-        val health = type.baseHealth * Waves.healthMultiplier(wave) * difficulty.healthMultiplier
-        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type)
+        val elite = eliteActive && spawnedThisWave < ELITE_COUNT
+        val health = type.baseHealth * Waves.healthMultiplier(wave) * difficulty.healthMultiplier *
+            (if (elite) ELITE_HEALTH_MULTIPLIER else 1.0)
+        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type, isElite = elite)
         spawnedThisWave++
         remainingToSpawn--
     }
@@ -229,6 +276,60 @@ class GameSimulation(
         const val BUILD_MARGIN = 24.0
         const val PATH_CLEARANCE = 36.0
         const val TOWER_SPACING = 44.0
+        const val ELITE_WAVE = 8
+        const val ELITE_COUNT = 3
+        const val ELITE_REWARD = 90
+        const val ELITE_HEALTH_MULTIPLIER = 1.6
+
+        private fun rewardFor(wave: Int, elite: Boolean): Int =
+            25 + wave * 5 + if (elite) ELITE_REWARD else 0
+
+        internal fun restore(save: MissionCheckpoint): GameSimulation? {
+            if (save.wave !in 0 until TOTAL_WAVES || save.tick !in 0..Long.MAX_VALUE / 2 ||
+                save.gold < 0 || save.lives !in 1..save.difficulty.startingLives ||
+                save.leaked != save.difficulty.startingLives - save.lives || save.kills < 0 || save.fieldRank < 1 ||
+                save.useUpperRoute && save.map.alternatePath == null || save.eliteOffered && save.wave + 1 != ELITE_WAVE
+            ) return null
+
+            val resolvedEnemies = (1..save.wave).sumOf(::enemyCount)
+            if (save.kills != resolvedEnemies - save.leaked || save.nextEnemyId != resolvedEnemies + 1L ||
+                save.nextTowerId <= 0L || save.nextTowerId > Long.MAX_VALUE / 2 ||
+                save.reports.size != save.wave || save.reports.sumOf { it.leaked } != save.leaked ||
+                save.reports.withIndex().any { (index, report) ->
+                    report.wave != index + 1 || !report.cleared || report.leaked < 0 || report.echoHits < 0 ||
+                        report.elite && report.wave != ELITE_WAVE
+                }
+            ) return null
+
+            val game = GameSimulation(save.map, save.difficulty, save.seed, save.fieldRank, save.tremorModule)
+            if (game.tremorModule != save.tremorModule) return null
+            var previousTowerId = 0L
+            for (tower in save.towers) {
+                if (tower.id <= previousTowerId || tower.id >= save.nextTowerId || tower.level !in 1..Tower.MAX_LEVEL ||
+                    tower.nextAttackTick !in 0..(save.tick + tower.type.baseAttackIntervalTicks) ||
+                    !game.isUnlocked(tower.type) || game.placementError(tower.x, tower.y) != null
+                ) return null
+                game.mutableTowers += game.createTower(tower.type, tower.x, tower.y, tower.id).also { it.restore(tower) }
+                previousTowerId = tower.id
+            }
+            val armedId = save.echo.armedTowerId
+            if (armedId != null && (save.wave >= TOTAL_WAVES - 1 || game.towers.none { it.id == armedId })) return null
+
+            game.tick = save.tick
+            game.wave = save.wave
+            game.gold = save.gold
+            game.lives = save.lives
+            game.kills = save.kills
+            game.leakedEnemies = save.leaked
+            game.nextEnemyId = save.nextEnemyId
+            game.nextTowerId = save.nextTowerId
+            game.useUpperRoute = save.useUpperRoute
+            game.eliteOffered = save.eliteOffered
+            game.eliteActive = save.reports.lastOrNull()?.elite == true
+            game.mutableWaveReports.addAll(save.reports)
+            game.echo.restore(save.echo)
+            return game
+        }
 
         fun enemyCount(wave: Int): Int = Waves.enemyCount(wave)
         fun spawnIntervalTicks(wave: Int): Long = Waves.intervalTicks(wave)
@@ -248,3 +349,6 @@ class GameSimulation(
 
 enum class GameState { PREPARING, RUNNING, WON, LOST }
 data class ActionResult(val success: Boolean, val message: String, val towerId: Long? = null)
+
+
+data class WaveReport(val wave: Int, val leaked: Int, val echoHits: Int, val elite: Boolean, val cleared: Boolean)
