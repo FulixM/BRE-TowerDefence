@@ -1,5 +1,6 @@
 package io.felixmenzel.towerdefence.simulation
 
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.min
 
@@ -11,6 +12,12 @@ class Enemy(
     val maxHealth: Double,
     val type: EnemyType = EnemyType.NORMAL,
     val bounty: Int = type.bounty,
+    val isElite: Boolean = false,
+    val isBoss: Boolean = false,
+    val isCommander: Boolean = false,
+    private val escortCommander: Enemy? = null,
+    val isMarshalRelay: Boolean = false,
+    private val marshalRelays: List<Enemy>? = null,
 ) {
     private val path = path.toList()
 
@@ -33,9 +40,24 @@ class Enemy(
         private set
     private var nextWaypointIndex = 1
     val hasReachedGoal: Boolean get() = nextWaypointIndex >= path.size
+    val isMarshal: Boolean get() = marshalRelays != null
+    val supportingRelays: Sequence<Enemy> get() = marshalRelays.orEmpty().asSequence()
+        .filter { it.isAlive && !it.hasReachedGoal }
+    val bossExposed: Boolean get() = isBoss && if (isMarshal) {
+        supportingRelays.none() || Marshal.windows.any { distanceTravelled in it }
+    } else Bastion.windows.any { distanceTravelled in it }
+    private val bossDamageMultiplier: Double get() = when {
+        !isBoss || bossExposed -> 1.0
+        isMarshal -> Marshal.PROTECTED_DAMAGE_MULTIPLIER
+        else -> Bastion.PROTECTED_DAMAGE_MULTIPLIER
+    }
     var health = maxHealth
         private set
     val isAlive: Boolean get() = health > 0.0
+    val protectingCommander: Enemy? get() = escortCommander?.takeIf {
+        it.isCommander && it.isAlive && !it.hasReachedGoal &&
+            abs(it.distanceTravelled - distanceTravelled) <= Commander.PROTECTION_RANGE
+    }
     var slowFactor = 1.0
         private set
     private var slowSeconds = 0.0
@@ -101,12 +123,19 @@ class Enemy(
         applyDamage(damage, piercesArmor = false, shieldMultiplier = 3.0)
     }
 
+    internal fun takeRailDamage(damage: Double, module: RailModule) {
+        val relayFactor = if (isMarshalRelay) module.relayDamageFactor else 1.0
+        applyDamage(damage * relayFactor, piercesArmor = true, shieldMultiplier = module.shieldDamageFactor)
+    }
+
     private fun applyDamage(damage: Double, piercesArmor: Boolean, shieldMultiplier: Double) {
         require(damage.isFinite() && damage >= 0.0) { "Damage must be finite and non-negative" }
         if (damage == 0.0 || !isAlive) return
         recoveryDelay = 1.5
         val incoming = damage * (if (markedSeconds > 0.0) 1.25 else 1.0) *
-            (if (piercesArmor) 1.0 else type.damageMultiplier)
+            (if (piercesArmor) 1.0 else type.damageMultiplier) *
+            bossDamageMultiplier *
+            (if (protectingCommander != null) Commander.ESCORT_DAMAGE_MULTIPLIER else 1.0)
         val absorbed = min(shield, incoming * shieldMultiplier)
         shield -= absorbed
         // Only damage spent against the shield gains the bonus; overflow uses the normal rate.
@@ -153,4 +182,11 @@ enum class EnemyType(
         "Vanguard", 105.0, 39.0, 20, 14, "Sunder breaks its shield faster. Rail bypasses its armor.",
         damageMultiplier = 0.75, shieldFraction = 0.30,
     ),
+}
+
+
+internal object Commander {
+    const val HEALTH_MULTIPLIER = 1.12
+    const val PROTECTION_RANGE = 105.0
+    const val ESCORT_DAMAGE_MULTIPLIER = 0.50
 }

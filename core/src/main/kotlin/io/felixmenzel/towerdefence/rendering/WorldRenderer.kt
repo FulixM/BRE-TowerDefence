@@ -17,13 +17,17 @@ import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.ARMOR
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.HEALTH
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.REGENERATION
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.SHIELD
+import io.felixmenzel.towerdefence.simulation.BuildGrid
 import io.felixmenzel.towerdefence.simulation.BattleMap
+import io.felixmenzel.towerdefence.simulation.Bastion
+import io.felixmenzel.towerdefence.simulation.Marshal
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
+import io.felixmenzel.towerdefence.simulation.Waypoint
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.acos
@@ -37,6 +41,8 @@ import kotlin.math.sqrt
 /** Procedural artwork only: every visual effect follows the simulation clock, including pause. */
 class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private val shapes = ShapeRenderer()
+    private val terrainRenderer = TerraceRenderer(shapes)
+    private val boardGuides = BoardGuides(shapes)
     private val batch = SpriteBatch()
     private val viewportBuffer = BufferUtils.newIntBuffer(4)
     private val scissorBuffer = BufferUtils.newIntBuffer(4)
@@ -57,6 +63,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         buildType: TowerType? = null,
         cursorX: Double? = null,
         cursorY: Double? = null,
+        previewUpgrade: Boolean = false,
     ) {
         batch.projectionMatrix = projection
         val hadBlend = Gdx.gl.glIsEnabled(GL20.GL_BLEND)
@@ -82,7 +89,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             pixelsPerUnit = nativeDensity
             shapes.projectionMatrix = projection
         }
-        drawGeometry(simulation, alpha, selectedTower, buildType, cursorX, cursorY)
+        drawGeometry(simulation, alpha, selectedTower, buildType, cursorX, cursorY, previewUpgrade)
         if (supersample) {
             fallbackBuffer!!.end()
             Gdx.gl.glViewport(viewportBuffer.get(0), viewportBuffer.get(1), viewportBuffer.get(2), viewportBuffer.get(3))
@@ -117,15 +124,43 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     }
 
     private fun drawGeometry(simulation: GameSimulation, alpha: Double, selectedTower: Tower?,
-        buildType: TowerType?, cursorX: Double?, cursorY: Double?) {
+        buildType: TowerType?, cursorX: Double?, cursorY: Double?, previewUpgrade: Boolean) {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
-        drawBoard(simulation)
-        selectedTower?.let { drawRange(it.x.toFloat(), it.y.toFloat(), it.range.toFloat(), CYAN) }
+        drawBoard(simulation, buildType != null)
+        selectedTower?.let {
+            drawCoverage(simulation, it.x, it.y, it.range, CYAN, if (previewUpgrade) it.nextUpgrade?.range else null)
+            if (simulation.gridPlacement) drawTile(it.x.toFloat(), it.y.toFloat(), CYAN)
+        }
         for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
+        shapes.color = COMMAND_LINK
+        for (escort in simulation.enemies) {
+            val commander = escort.protectingCommander ?: continue
+            shapes.rectLine(
+                commander.interpolatedX(alpha).toFloat(), commander.interpolatedY(alpha).toFloat(),
+                escort.interpolatedX(alpha).toFloat(), escort.interpolatedY(alpha).toFloat(), 2.5f,
+            )
+        }
+        val marshal = simulation.activeBoss?.takeIf { it.isMarshal && !it.bossExposed }
+        if (marshal != null) {
+            shapes.color = MARSHAL_LINK
+            for (relay in marshal.supportingRelays) {
+                shapes.rectLine(marshal.interpolatedX(alpha).toFloat(), marshal.interpolatedY(alpha).toFloat(),
+                    relay.interpolatedX(alpha).toFloat(), relay.interpolatedY(alpha).toFloat(), 3f)
+            }
+        }
         for (enemy in simulation.enemies) drawEnemy(enemy, simulation, alpha)
         simulation.echo.nextShot(simulation.state == GameState.PREPARING)?.let { shot ->
             ring(shot.fromX.toFloat(), shot.fromY.toFloat(), 30f, 1.5f, ECHO, 0.7f)
             ring(shot.toX.toFloat(), shot.toY.toFloat(), 8f, 1.5f, ECHO, 0.65f)
+        }
+        if (simulation.state == GameState.PREPARING && simulation.inactivePath != null) {
+            for (shot in simulation.echo.recordedImpacts()) {
+                val x = if (shot.type == TowerType.INFERNO) shot.fromX else shot.toX
+                val y = if (shot.type == TowerType.INFERNO) shot.fromY else shot.toY
+                shapes.color = ECHO
+                diamond(x.toFloat(), y.toFloat(), 3f)
+                for (jump in shot.arcJumps) diamond(jump.x.toFloat(), jump.y.toFloat(), 3f)
+            }
         }
         val recordedTowerId = simulation.echo.recordingTowerId ?: simulation.echo.armedTowerId
         simulation.towers.firstOrNull { it.id == recordedTowerId }?.let { tower ->
@@ -134,12 +169,12 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         drawShots(simulation)
         for (enemy in simulation.enemies) drawEnemyDefenses(enemy, alpha)
         if (buildType != null && cursorX != null && cursorY != null) {
-            drawPreview(simulation, buildType, cursorX.toFloat(), cursorY.toFloat())
+            drawPreview(simulation, buildType, cursorX, cursorY)
         }
         shapes.end()
     }
 
-    private fun drawBoard(simulation: GameSimulation) {
+    private fun drawBoard(simulation: GameSimulation, placing: Boolean) {
         val palette = when (simulation.battleMap) {
             BattleMap.CORRIDOR -> DEFENSE_PALETTE
             BattleMap.SWITCHBACK -> RELAY_PALETTE
@@ -148,21 +183,25 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         }
         shapes.color = palette.background
         shapes.rect(0f, 0f, WIDTH, HEIGHT)
-        shapes.color = palette.grid
-        for (x in 0..900 step 30) shapes.rect(x.toFloat(), 0f, 1f, HEIGHT)
-        for (y in 0..560 step 30) shapes.rect(0f, y.toFloat(), WIDTH, 1f)
-        shapes.color = palette.majorGrid
-        for (x in 60..870 step 120) {
-            for (y in 60..540 step 120) {
-                shapes.rect(x - 3f, y.toFloat(), 7f, 1f)
-                shapes.rect(x.toFloat(), y - 3f, 1f, 7f)
-            }
+        if (!simulation.gridPlacement) {
+            shapes.color = palette.grid
+            for (x in 0..900 step 30) shapes.rect(x.toFloat(), 0f, 1f, HEIGHT)
+            for (y in 0..560 step 30) shapes.rect(0f, y.toFloat(), WIDTH, 1f)
         }
+        terrainRenderer.draw(simulation.battleMap, simulation.terrain.terraces)
+        if (simulation.gridPlacement) drawBuildGrid(palette, placing)
         if (simulation.battleMap == BattleMap.SWITCHBACK) drawRelayTrim()
-        // Both maps use the same lane width: the artwork never suggests different placement rules.
-        drawPath(simulation, 48f, palette.laneEdge)
-        drawPath(simulation, 42f, palette.lane)
-        drawPath(simulation, 26f, palette.laneCenter)
+        simulation.inactivePath?.let { alternate ->
+            drawPath(alternate, 48f, palette.majorGrid)
+            drawPath(alternate, 42f, palette.grid)
+        }
+        drawPath(simulation.path, 48f, palette.laneEdge)
+        drawPath(simulation.path, 42f, palette.lane)
+        drawPath(simulation.path, 26f, palette.laneCenter)
+        when (simulation.bossWindowWave) {
+            Bastion.WAVE -> drawBossWindows(simulation.path, Bastion.windows)
+            Marshal.WAVE -> drawBossWindows(simulation.path, Marshal.windows)
+        }
         shapes.color = palette.laneMark
         val path = simulation.path
         for (index in 0 until path.lastIndex) {
@@ -183,6 +222,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 position += 54f
             }
         }
+        if (placing && simulation.gridPlacement) boardGuides.drawBuildHints(simulation)
+        if (simulation.elevatedTerrain) boardGuides.drawGrades(simulation)
         path.firstOrNull()?.let { drawGate(it.x.toFloat(), it.y.toFloat(), CORAL, false, simulation.tick) }
         path.lastOrNull()?.let { drawGate(it.x.toFloat(), it.y.toFloat(), CYAN, true, simulation.tick) }
         // Subtle edge rails and corner brackets frame the play area.
@@ -212,12 +253,37 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         shapes.rectLine(874f, 504f, 874f, 535f, 1f)
     }
 
-    private fun drawPath(simulation: GameSimulation, width: Float, color: Color) {
+    private fun drawBossWindows(path: List<Waypoint>, windows: List<ClosedFloatingPointRange<Double>>) {
+        var offset = 0.0
+        shapes.color = BOSS_EXPOSED
+        for ((from, to) in path.zipWithNext()) {
+            val dx = to.x - from.x
+            val dy = to.y - from.y
+            val length = sqrt(dx * dx + dy * dy)
+            if (length == 0.0) continue
+            for (window in windows) {
+                val start = maxOf(0.0, window.start - offset)
+                val end = minOf(length, window.endInclusive - offset)
+                if (end <= start) continue
+                val ux = dx / length
+                val uy = dy / length
+                for (side in -1..1 step 2) {
+                    val x = from.x - uy * 16 * side
+                    val y = from.y + ux * 16 * side
+                    shapes.rectLine((x + start * ux).toFloat(), (y + start * uy).toFloat(),
+                        (x + end * ux).toFloat(), (y + end * uy).toFloat(), 2.5f)
+                }
+            }
+            offset += length
+        }
+    }
+
+    private fun drawPath(path: List<Waypoint>, width: Float, color: Color) {
         shapes.color = color
-        simulation.path.forEach { circle(it.x.toFloat(), it.y.toFloat(), width / 2f) }
-        for (index in 0 until simulation.path.lastIndex) {
-            val start = simulation.path[index]
-            val end = simulation.path[index + 1]
+        path.forEach { circle(it.x.toFloat(), it.y.toFloat(), width / 2f) }
+        for (index in 0 until path.lastIndex) {
+            val start = path[index]
+            val end = path[index + 1]
             shapes.rectLine(start.x.toFloat(), start.y.toFloat(), end.x.toFloat(), end.y.toFloat(), width)
         }
     }
@@ -250,6 +316,37 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         shapes.setColor(color.r, color.g, color.b, 0.055f)
         circle(x, y, range)
         ring(x, y, range, 1.3f, color, 0.55f)
+    }
+
+    private fun drawCoverage(simulation: GameSimulation, x: Double, y: Double, range: Double, color: Color,
+        upgradeRange: Double? = null) {
+        val terrain = simulation.terrain
+        val height = terrain.heightAt(x, y)
+        if (simulation.elevatedTerrain) {
+            drawRange(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 2).toFloat(), color)
+            ring(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 0).toFloat(), 1f, color, 0.28f)
+        } else {
+            drawRange(x.toFloat(), y.toFloat(), range.toFloat(), color)
+            if (upgradeRange == null) return
+        }
+        for (index in 0 until simulation.path.lastIndex) {
+            val start = simulation.path[index]
+            val end = simulation.path[index + 1]
+            val dx = end.x - start.x
+            val dy = end.y - start.y
+            val steps = ceil(sqrt(dx * dx + dy * dy) / 9.0).toInt().coerceAtLeast(1)
+            for (step in 0 until steps) {
+                val targetX = start.x + dx * step / steps
+                val targetY = start.y + dy * step / steps
+                if (terrain.canReach(x, y, height, range, targetX, targetY)) {
+                    shapes.setColor(color.r, color.g, color.b, 0.92f)
+                    shapes.circle(targetX.toFloat(), targetY.toFloat(), 2f, 10)
+                } else if (upgradeRange != null && terrain.canReach(x, y, height, upgradeRange, targetX, targetY)) {
+                    shapes.color = UPGRADE_COVERAGE
+                    diamond(targetX.toFloat(), targetY.toFloat(), 3.5f)
+                }
+            }
+        }
     }
 
     private fun drawTower(tower: Tower, simulation: GameSimulation, selected: Boolean) {
@@ -390,12 +487,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.color = towerColor(TowerType.BEACON)
             shapes.triangle(x - 4f, y - 19f, x + 4f, y - 19f, x, y - 13f)
         }
-        val radius = when (enemy.type) {
+        val radius = if (enemy.isMarshal) 24f else if (enemy.isBoss) 20f else if (enemy.isCommander) 16f else when (enemy.type) {
             EnemyType.ARMORED, EnemyType.PLATED, EnemyType.VANGUARD -> 13f
             EnemyType.FAST -> 9f
             else -> 11f
         }
-        val baseColor = when (enemy.type) {
+        val baseColor = if (enemy.isBoss) {
+            if (enemy.bossExposed) BOSS_EXPOSED else protectedBossColor(enemy)
+        } else if (enemy.isCommander) COMMAND_LINK else when (enemy.type) {
             EnemyType.ARMORED -> ORANGE
             EnemyType.FAST -> MAGENTA
             EnemyType.NORMAL -> CORAL
@@ -415,7 +514,10 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.color = PANEL
                 hexagon(x, y, radius - 4f)
                 shapes.color = color
-                shapes.rect(x - 4f, y - 4f, 8f, 8f)
+                if (enemy.isBoss) {
+                    diamond(x, y, 10f)
+                    if (!enemy.bossExposed) ring(x, y, radius + 3f, 2f, protectedBossColor(enemy))
+                } else shapes.rect(x - 4f, y - 4f, 8f, 8f)
             }
             EnemyType.FAST -> drawRunner(x, y, enemy, simulation)
             EnemyType.NORMAL -> {
@@ -458,7 +560,12 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val x = enemy.interpolatedX(alpha).toFloat()
         val y = enemy.interpolatedY(alpha).toFloat()
         val health = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
-        drawDefenseMeter(x - 15f, y + 19f, 4f, health, if (health < 0.3f) CORAL else HEALTH, BORDER)
+        val healthColor = if (health < 0.3f) CORAL else HEALTH
+        if (enemy.isBoss) {
+            val phaseColor = if (enemy.bossExposed) BOSS_EXPOSED else protectedBossColor(enemy)
+            val barY = if (enemy.isMarshal) 31f else 27f
+            drawDefenseMeter(x - 15f, y + barY, 5f, health, healthColor, phaseColor)
+        } else drawDefenseMeter(x - 15f, y + 19f, 4f, health, healthColor, BORDER)
 
         val hasShield = enemy.maxShield > 0.0
         if (hasShield) {
@@ -481,6 +588,31 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.color = REGENERATION
             shapes.rect(x + 21f, y + 17f, 2f, 8f)
             shapes.rect(x + 18f, y + 20f, 8f, 2f)
+        }
+        if (enemy.isElite) drawEliteBrackets(x, y)
+        if (enemy.isMarshalRelay) {
+            shapes.color = MARSHAL_LINK
+            diamond(x, y - 22f, 5f)
+        }
+        if (enemy.isCommander) {
+            shapes.color = COMMAND_LINK
+            diamond(x, y - 22f, 5f)
+        } else if (enemy.protectingCommander != null) {
+            shapes.color = COMMAND_LINK
+            shapes.rect(x - 6f, y - 18f, 12f, 2f)
+        }
+    }
+
+    private fun protectedBossColor(enemy: Enemy) = if (enemy.isMarshal) MARSHAL_LINK else BOSS_PROTECTED
+
+    private fun drawEliteBrackets(x: Float, y: Float) {
+        shapes.color = ELITE
+        for (side in -1..1 step 2) {
+            val outer = x + side * 24f
+            val inner = x + side * 19f
+            shapes.rectLine(inner, y - 11f, outer, y - 6f, 2.5f)
+            shapes.rectLine(outer, y - 6f, outer, y + 6f, 2.5f)
+            shapes.rectLine(outer, y + 6f, inner, y + 11f, 2.5f)
         }
     }
 
@@ -555,12 +687,12 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 jumpY = jump.y.toFloat()
             }
             val radius = when (shot.type) {
-                TowerType.CANNON -> 8f + age * (Tower.SPLASH_RADIUS.toFloat() - 8f)
+                TowerType.CANNON -> 8f + age * (shot.cannonSplashRadius.toFloat() - 8f)
                 TowerType.FROST -> 5f + age * 17f
                 TowerType.RAIL -> 4f + age * 13f
                 TowerType.BEACON -> 8f + age * 10f
                 TowerType.SUNDER -> 6f + age * 13f
-                TowerType.TREMOR -> 6f + age * (Tower.TREMOR_RADIUS.toFloat() - 6f)
+                TowerType.TREMOR -> 6f + age * (shot.areaRadius.toFloat() - 6f)
                 else -> 3f + age * 9f
             }
             ring(toX, toY, radius, 2f * opacity + 0.5f, color, opacity)
@@ -573,12 +705,44 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         }
     }
 
-    private fun drawPreview(simulation: GameSimulation, type: TowerType, x: Float, y: Float) {
-        val valid = simulation.placementError(x.toDouble(), y.toDouble()) == null &&
+    private fun drawBuildGrid(palette: BoardPalette, placing: Boolean) {
+        val left = BuildGrid.LEFT.toFloat()
+        val bottom = BuildGrid.BOTTOM.toFloat()
+        val width = (BuildGrid.COLUMNS * BuildGrid.SIZE).toFloat()
+        val height = (BuildGrid.ROWS * BuildGrid.SIZE).toFloat()
+        val ink = if (placing) MUTED else palette.majorGrid
+        shapes.setColor(ink.r, ink.g, ink.b, if (placing) 0.46f else 0.68f)
+        for (column in 0..BuildGrid.COLUMNS) {
+            shapes.rect(left + column * BuildGrid.SIZE - 0.5f, bottom, 1f, height)
+        }
+        for (row in 0..BuildGrid.ROWS) {
+            shapes.rect(left, bottom + row * BuildGrid.SIZE - 0.5f, width, 1f)
+        }
+    }
+
+    private fun drawTile(x: Float, y: Float, color: Color) {
+        val size = BuildGrid.SIZE - 2f
+        val left = x - size / 2f
+        val bottom = y - size / 2f
+        shapes.setColor(color.r, color.g, color.b, 0.14f)
+        shapes.rect(left, bottom, size, size)
+        shapes.setColor(color.r, color.g, color.b, 0.82f)
+        shapes.rect(left, bottom, size, 1.6f)
+        shapes.rect(left, bottom + size - 1.6f, size, 1.6f)
+        shapes.rect(left, bottom + 1.6f, 1.6f, size - 3.2f)
+        shapes.rect(left + size - 1.6f, bottom + 1.6f, 1.6f, size - 3.2f)
+    }
+
+    private fun drawPreview(simulation: GameSimulation, type: TowerType, cursorX: Double, cursorY: Double) {
+        val position = simulation.buildPosition(cursorX, cursorY) ?: return
+        val x = position.x.toFloat()
+        val y = position.y.toFloat()
+        val valid = simulation.placementError(cursorX, cursorY) == null &&
             simulation.gold >= type.cost &&
             (simulation.state == GameState.PREPARING || simulation.state == GameState.RUNNING)
         val color = if (valid) HEALTH else CORAL
-        drawRange(x, y, type.baseRange.toFloat(), color)
+        if (valid || !simulation.gridPlacement) drawCoverage(simulation, position.x, position.y, simulation.baseRange(type), color)
+        if (simulation.gridPlacement) drawTile(x, y, color)
         shapes.setColor(color.r, color.g, color.b, 0.25f)
         hexagon(x, y, 22f)
         ring(x, y, 23f, 2f, color, 0.8f)
@@ -604,7 +768,15 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         font.color = DIM
         val sector = (simulation.battleMap.ordinal + 1).toString().padStart(2, '0')
         font.draw(batch, "SECTOR $sector    /    ${simulation.battleMap.title.uppercase(Locale.ROOT)}", 32f, 470f)
-        font.draw(batch, "BUILD OFF THE ROUTE  /  PROTECT THE CORE", 32f, 28f)
+        val tip = if (simulation.elevatedTerrain) "HIGH GROUND EXTENDS REACH  /  DOTS SHOW ROUTE COVERAGE"
+            else "BUILD OFF THE ROUTE  /  PROTECT THE CORE"
+        font.draw(batch, tip, 32f, 28f)
+        if (simulation.elevatedTerrain) {
+            font.color = BoardGuides.UPHILL
+            font.draw(batch, "+ UPHILL", 675f, 28f)
+            font.color = BoardGuides.DOWNHILL
+            font.draw(batch, "- DOWNHILL", 767f, 28f)
+        }
         simulation.path.firstOrNull()?.let {
             font.color = CORAL
             val labelY = if (it.y > 350.0) it.y.toFloat() - 42f else it.y.toFloat() + 49f
@@ -737,9 +909,15 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val SHADOW = Color(0.005f, 0.009f, 0.02f, 0.75f)
         val CYAN = Color.valueOf("59d8ea")
         val ORANGE = Color.valueOf("ffba6b")
+        val UPGRADE_COVERAGE = Color.valueOf("ffd278")
         val ICE = Color.valueOf("a8bfff")
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")
+        val ELITE = Color.valueOf("ffe08a")
+        val MARSHAL_LINK = Color.valueOf("6bcfff")
+        val COMMAND_LINK = Color.valueOf("75eeb9")
+        val BOSS_EXPOSED = Color.valueOf("ffcb6e")
+        val BOSS_PROTECTED = Color.valueOf("e5a0fc")
         val DEFENSE_TRACK = Color.valueOf("080d17")
         val SHIELD_TRACK_EDGE = Color.valueOf("3c7383")
         val MUTED = Color.valueOf("9aafc6")

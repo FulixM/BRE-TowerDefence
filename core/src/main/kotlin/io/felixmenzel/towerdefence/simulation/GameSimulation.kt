@@ -8,17 +8,41 @@ class GameSimulation(
     val difficulty: Difficulty = Difficulty.NORMAL,
     val seed: Int? = null,
     val fieldRank: Int = 1,
+    tremorModule: TremorModule = TremorModule.STANDARD,
+    val mode: MissionMode = MissionMode.CAMPAIGN,
+    val railModule: RailModule = RailModule.STANDARD,
+    research: ResearchLoadout = ResearchLoadout.EMPTY,
+    val elevatedTerrain: Boolean = mode == MissionMode.CAMPAIGN,
+    val gridPlacement: Boolean = seed == null || elevatedTerrain,
 ) {
-    val path: List<Waypoint> = battleMap.path
+    init {
+        require(mode.supports(battleMap, seed) && (!elevatedTerrain || mode == MissionMode.CAMPAIGN))
+        require(seed == null || !gridPlacement || elevatedTerrain)
+    }
+
+    val research = if (ResearchLoadout.appliesTo(mode, seed)) research else ResearchLoadout.EMPTY
+    val terrain = if (elevatedTerrain) BattleTerrain.forMap(battleMap, seed) else BattleTerrain.FLAT
+    fun baseRange(type: TowerType): Double = terrain.baseRange(research.rangeFor(type))
+    val startingGold = mode.startingGold(difficulty) + this.research.startingGoldBonus
+    val tremorModule = if (fieldRank >= TremorModule.REQUIRED_RANK) tremorModule else TremorModule.STANDARD
+    var useUpperRoute = false
+        private set
+    val path: List<Waypoint> get() = if (useUpperRoute) checkNotNull(battleMap.alternatePath) else battleMap.path
+    val inactivePath: List<Waypoint>? get() = if (useUpperRoute) battleMap.path else battleMap.alternatePath
+    val challenge: RemixChallenge? = seed?.takeIf { it in RemixChallenge.SEED_RANGE }?.let {
+        RemixChallenge(battleMap, difficulty, it, elevatedTerrain, gridPlacement)
+    }
     private val mutableEnemies = mutableListOf<Enemy>()
     private val mutableTowers = mutableListOf<Tower>()
     private val mutableShots = mutableListOf<Shot>()
     val enemies: List<Enemy> = Collections.unmodifiableList(mutableEnemies)
     val towers: List<Tower> = Collections.unmodifiableList(mutableTowers)
     val shots: List<Shot> = Collections.unmodifiableList(mutableShots)
+    private val mutableWaveReports = mutableListOf<WaveReport>()
+    val waveReports: List<WaveReport> = Collections.unmodifiableList(mutableWaveReports)
     var tick = 0L
         private set
-    var gold = difficulty.startingGold
+    var gold = startingGold
         private set
     var lives = difficulty.startingLives
         private set
@@ -28,19 +52,56 @@ class GameSimulation(
         private set
     var leakedEnemies = 0
         private set
-    val totalWaves = TOTAL_WAVES
-    private val waves = List(totalWaves) { Waves.plan(it + 1, seed) }
+    val totalWaves = mode.waveCount
+    private val corridorCampaign = mode == MissionMode.CAMPAIGN && battleMap == BattleMap.CORRIDOR
+    private val waves = List(totalWaves) { index ->
+        val number = index + 1
+        val plan = mode.plan(number, seed)
+        if (corridorCampaign && number == Marshal.WAVE) plan.withMarshal() else plan
+    }
+    private val bossSlot = if (corridorCampaign) {
+        waves[Bastion.WAVE - 1].enemies.indexOfLast { it == EnemyType.ARMORED }
+    } else -1
+    val bossWindowWave: Int? get() {
+        if (!corridorCampaign) return null
+        val number = when (state) {
+            GameState.PREPARING -> wave + 1
+            GameState.RUNNING -> wave
+            else -> return null
+        }
+        return number.takeIf { it == Bastion.WAVE || it == Marshal.WAVE }
+    }
+    val showBossWindows: Boolean get() = bossWindowWave != null
+    var bossBreached = false
+        private set
+    val activeBoss: Enemy? get() = enemies.firstOrNull { it.isBoss && it.isAlive && !it.hasReachedGoal }
+    private val bossWaveDescription = if (bossSlot >= 0) waves[Bastion.WAVE - 1].describe(replaceBulwarkWithBoss = true) else null
     var state = GameState.PREPARING
         private set
     var remainingToSpawn = 0
         private set
-    val waveReward: Int get() = 25 + wave * 5
+    var eliteOffered = false
+        private set
+    var eliteActive = false
+        private set
+    val canOfferElite: Boolean get() = mode == MissionMode.CAMPAIGN && state == GameState.PREPARING && wave + 1 == ELITE_WAVE
+    val waveReward: Int get() = rewardFor(wave, eliteActive)
+    val nextWaveReward: Int get() = rewardFor(wave + 1, eliteOffered)
+    private var waveLeaks = 0
+    private var waveEchoHits = 0
     val nextWaveDescription: String get() = waveDescription((wave + 1).coerceAtMost(totalWaves))
     private var nextEnemyId = 1L
     private var nextTowerId = 1L
+    private var lastBuildUndoable = false
+
+    val lastBuildRefund: Int?
+        get() = undoableTower?.type?.cost
+
+    private val undoableTower: Tower?
+        get() = if (state == GameState.PREPARING && lastBuildUndoable) mutableTowers.lastOrNull() else null
     private var spawnedThisWave = 0
     private var nextSpawnTick = 0L
-    internal val echo = WaveEcho()
+    internal val echo = WaveEcho(terrain)
 
     fun update() {
         tick++
@@ -56,11 +117,14 @@ class GameSimulation(
         // A leak is resolved before towers fire: reaching the exit is definitive.
         val escaped = mutableEnemies.count { it.isAlive && it.hasReachedGoal }
         if (escaped > 0) {
+            bossBreached = mutableEnemies.any { it.isBoss && it.isAlive && it.hasReachedGoal }
             leakedEnemies += escaped
+            waveLeaks += escaped
             lives = (lives - escaped).coerceAtLeast(0)
             mutableEnemies.removeAll { it.isAlive && it.hasReachedGoal }
         }
-        if (lives == 0) {
+        if (lives == 0 || bossBreached) {
+            recordWave(cleared = false)
             state = GameState.LOST
             remainingToSpawn = 0
             mutableShots.clear()
@@ -72,13 +136,18 @@ class GameSimulation(
             mutableShots.add(shot)
             echo.record(tower, shot)
         }
-        echo.replay(tick, mutableEnemies, mutableShots)
+        waveEchoHits += echo.replay(tick, mutableEnemies, mutableShots)
         collectDefeatedEnemies()
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
+            recordWave(cleared = true)
             state = if (wave == totalWaves) GameState.WON else GameState.PREPARING
             if (state == GameState.WON) echo.reset() else echo.finishWave()
         }
+    }
+
+    private fun recordWave(cleared: Boolean) {
+        mutableWaveReports += WaveReport(wave, waveLeaks, waveEchoHits, eliteActive, cleared)
     }
 
     private fun collectDefeatedEnemies() {
@@ -92,13 +161,32 @@ class GameSimulation(
 
     fun startWave(): ActionResult {
         if (state != GameState.PREPARING) return ActionResult(false, "Finish the current wave first")
+        lastBuildUndoable = false
         wave++
+        eliteActive = eliteOffered
+        eliteOffered = false
+        waveLeaks = 0
+        waveEchoHits = 0
         echo.startWave(tick)
         spawnedThisWave = 0
         remainingToSpawn = waves[wave - 1].enemies.size
         nextSpawnTick = tick + 1L
         state = GameState.RUNNING
         return ActionResult(true, "Wave $wave incoming")
+    }
+
+    fun toggleElite(): ActionResult {
+        if (!canOfferElite) return ActionResult(false, "Choose Elite while preparing wave $ELITE_WAVE")
+        eliteOffered = !eliteOffered
+        return ActionResult(true, if (eliteOffered) "Elite accepted: clear wave $ELITE_WAVE for +${ELITE_REWARD}g"
+            else "Elite declined: standard wave $ELITE_WAVE")
+    }
+
+    fun switchRoute(): ActionResult {
+        if (battleMap.alternatePath == null) return ActionResult(false, "This map has a single route")
+        if (state != GameState.PREPARING) return ActionResult(false, "Switch routes between waves")
+        useUpperRoute = !useUpperRoute
+        return ActionResult(true, if (useUpperRoute) "Next wave uses the upper lock" else "Next wave uses the lower lock")
     }
 
     fun isUnlocked(type: TowerType): Boolean = fieldRank >= type.requiredRank
@@ -108,11 +196,18 @@ class GameSimulation(
         if (!isUnlocked(type)) return ActionResult(false, "${type.title} unlocks at field rank ${type.requiredRank}")
         placementError(x, y)?.let { return ActionResult(false, it) }
         if (gold < type.cost) return ActionResult(false, "Need ${type.cost} gold for ${type.title}")
-        val tower = Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks, nextTowerId++, type)
+        val position = checkNotNull(buildPosition(x, y))
+        val tower = createTower(type, position.x, position.y, nextTowerId++)
         mutableTowers += tower
         gold -= type.cost
+        lastBuildUndoable = state == GameState.PREPARING
         return ActionResult(true, "${type.title} built", tower.id)
     }
+
+    private fun createTower(type: TowerType, x: Double, y: Double, id: Long): Tower =
+        Tower(x, y, baseRange(type), research.damageFor(type), type.baseAttackIntervalTicks,
+            id, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD,
+            if (type == TowerType.RAIL) railModule else RailModule.STANDARD, research.reloadFactor, terrain)
 
     fun upgradeTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to upgrade again")
@@ -121,13 +216,22 @@ class GameSimulation(
         if (gold < cost) return ActionResult(false, "Need $cost gold to upgrade", id)
         gold -= cost
         tower.upgrade()
+        invalidateBuildUndo(id)
         return ActionResult(true, "${tower.type.title} upgraded to level ${tower.level}", id)
+    }
+
+    fun specializeCannon(id: Long, specialization: CannonSpecialization): ActionResult {
+        if (!canManageTowers()) return ActionResult(false, "Restart to specialize again")
+        val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a Cannon first")
+        if (!tower.specializeCannon(specialization)) return ActionResult(false, "Choose one specialization on a level 3 Cannon")
+        return ActionResult(true, "Cannon specialized: ${specialization.title}", id)
     }
 
     fun cycleTargetPriority(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to change targeting again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         tower.cycleTargetPriority()
+        invalidateBuildUndo(id)
         return ActionResult(true, "${tower.type.title} targets ${tower.targetPriority.title.lowercase()}", id)
     }
 
@@ -137,6 +241,7 @@ class GameSimulation(
         }
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         val armed = echo.toggleTower(tower.id)
+        invalidateBuildUndo(id)
         val message = if (armed) "${tower.type.title} will record wave ${wave + 1} and echo in wave ${wave + 2}"
             else "Echo recording disarmed"
         return ActionResult(true, message, id)
@@ -146,46 +251,104 @@ class GameSimulation(
         if (!canManageTowers()) return ActionResult(false, "Restart to sell again")
         val tower = mutableTowers.firstOrNull { it.id == id } ?: return ActionResult(false, "Select a tower first")
         gold += tower.sellValue
+        invalidateBuildUndo(id)
         mutableTowers.remove(tower)
         echo.onTowerSold(id)
         return ActionResult(true, "Sold for ${tower.sellValue} gold")
     }
 
+    fun undoLastBuild(): ActionResult {
+        val tower = undoableTower ?: return ActionResult(false, "No new build to undo before the next wave")
+        val refund = tower.type.cost
+        gold += refund
+        mutableTowers.removeAt(mutableTowers.lastIndex)
+        lastBuildUndoable = false
+        return ActionResult(true, "${tower.type.title} build undone / +${refund} gold", tower.id)
+    }
+
+    private fun invalidateBuildUndo(id: Long) {
+        if (id == nextTowerId - 1L) lastBuildUndoable = false
+    }
+
+    internal fun buildPosition(x: Double, y: Double): Waypoint? =
+        if (gridPlacement) BuildGrid.center(x, y) else Waypoint(x, y)
+
+    fun towerAt(x: Double, y: Double): Tower? {
+        if (!gridPlacement) return towers.firstOrNull { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) <= 24.0 * 24.0 }
+        val center = BuildGrid.center(x, y) ?: return null
+        return towers.firstOrNull { it.x == center.x && it.y == center.y }
+    }
+
     /** Shared by commands and the placement preview, so invalid previews cannot spend money. */
     fun placementError(x: Double, y: Double): String? {
+        if (!gridPlacement) return positionError(x, y)
+        val center = BuildGrid.center(x, y) ?: return "Choose a square on the map"
+        return positionError(center.x, center.y)
+    }
+
+    private fun positionError(x: Double, y: Double): String? {
         if (!x.isFinite() || !y.isFinite()) return "Choose a position on the map"
         if (x < BUILD_MARGIN || x > WORLD_WIDTH - BUILD_MARGIN || y < BUILD_MARGIN || y > WORLD_HEIGHT - BUILD_MARGIN) {
             return "Keep the tower inside the map"
         }
-        for ((start, end) in path.zipWithNext()) {
+        for ((start, end) in battleMap.buildSegments) {
             if (distanceToSegmentSquared(x, y, start, end) < PATH_CLEARANCE * PATH_CLEARANCE) return "Keep the route clear"
         }
         if (mutableTowers.any { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) < TOWER_SPACING * TOWER_SPACING }) {
-            return "Too close to another tower"
+            return if (gridPlacement) "This square already has a tower" else "Too close to another tower"
         }
         return null
     }
 
+    fun hasCommanders(waveNumber: Int): Boolean =
+        waves.getOrNull(waveNumber - 1)?.commanderSlots?.isNotEmpty() == true
+
+    fun waveName(waveNumber: Int): String? =
+        when {
+            corridorCampaign && waveNumber == Bastion.WAVE -> "Bastion"
+            corridorCampaign && waveNumber == Marshal.WAVE -> "Marshal"
+            else -> mode.waveName(waveNumber)
+        }
+
     fun waveDescription(waveNumber: Int): String {
         require(waveNumber in 1..totalWaves)
-        return waves[waveNumber - 1].description
+        return if (waveNumber == Bastion.WAVE && bossWaveDescription != null) bossWaveDescription
+        else waves[waveNumber - 1].description
+    }
+
+    internal fun checkpoint(): MissionCheckpoint? {
+        if (state != GameState.PREPARING || wave == 0 && nextTowerId == 1L && !useUpperRoute) return null
+        return MissionCheckpoint(
+            battleMap, difficulty, seed, fieldRank, tremorModule, useUpperRoute,
+            tick, wave, gold, lives, kills, leakedEnemies, nextEnemyId, nextTowerId, eliteOffered,
+            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule, research, elevatedTerrain, gridPlacement,
+            lastBuildUndoable,
+        )
     }
 
     fun restart() {
         mutableEnemies.clear()
         mutableTowers.clear()
         mutableShots.clear()
+        mutableWaveReports.clear()
         echo.reset()
+        eliteOffered = false
+        eliteActive = false
+        waveLeaks = 0
+        waveEchoHits = 0
         tick = 0L
-        gold = difficulty.startingGold
+        gold = startingGold
         lives = difficulty.startingLives
         wave = 0
+        useUpperRoute = false
+        bossBreached = false
         kills = 0
         leakedEnemies = 0
         state = GameState.PREPARING
         remainingToSpawn = 0
         nextEnemyId = 1L
         nextTowerId = 1L
+        lastBuildUndoable = false
         spawnedThisWave = 0
         nextSpawnTick = 0L
     }
@@ -193,9 +356,31 @@ class GameSimulation(
     private fun canManageTowers() = state == GameState.PREPARING || state == GameState.RUNNING
 
     private fun spawnEnemy() {
-        val type = waves[wave - 1].enemies[spawnedThisWave]
-        val health = type.baseHealth * Waves.healthMultiplier(wave) * difficulty.healthMultiplier
-        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type)
+        val plan = waves[wave - 1]
+        val type = plan.enemies[spawnedThisWave]
+        val elite = eliteActive && spawnedThisWave < ELITE_COUNT
+        val boss = wave == Bastion.WAVE && spawnedThisWave == bossSlot
+        val marshal = plan.marshalFormation && spawnedThisWave == Marshal.SLOT
+        val relay = plan.marshalFormation && spawnedThisWave in Marshal.relaySlots
+        val commandSlot = plan.commanderFor(spawnedThisWave)
+        val isCommander = commandSlot == spawnedThisWave
+        val escortCommander = if (commandSlot != null && !isCommander) {
+            val commanderId = nextEnemyId - (spawnedThisWave - commandSlot)
+            mutableEnemies.firstOrNull { it.id == commanderId }
+        } else null
+        val healthFactor = when {
+            elite -> ELITE_HEALTH_MULTIPLIER
+            marshal -> Marshal.HEALTH_MULTIPLIER
+            boss -> Bastion.HEALTH_MULTIPLIER
+            isCommander -> Commander.HEALTH_MULTIPLIER
+            else -> 1.0
+        }
+        val health = type.baseHealth * mode.healthMultiplier(wave) * difficulty.healthMultiplier * healthFactor
+        val relays = if (marshal) mutableEnemies.filter { it.isMarshalRelay } else null
+        val speed = if (relay) EnemyType.ARMORED.baseSpeed else type.baseSpeed
+        mutableEnemies += Enemy(nextEnemyId++, path, speed, health, type,
+            isElite = elite, isBoss = boss || marshal, isCommander = isCommander, escortCommander = escortCommander,
+            isMarshalRelay = relay, marshalRelays = relays)
         spawnedThisWave++
         remainingToSpawn--
     }
@@ -212,6 +397,67 @@ class GameSimulation(
         const val BUILD_MARGIN = 24.0
         const val PATH_CLEARANCE = 36.0
         const val TOWER_SPACING = 44.0
+        const val ELITE_WAVE = 8
+        const val ELITE_COUNT = 3
+        const val ELITE_REWARD = 90
+        const val ELITE_HEALTH_MULTIPLIER = 1.6
+
+        private fun rewardFor(wave: Int, elite: Boolean): Int =
+            25 + wave * 5 + if (elite) ELITE_REWARD else 0
+
+        internal fun restore(save: MissionCheckpoint): GameSimulation? {
+            if (!save.mode.supports(save.map, save.seed) || save.elevatedTerrain && save.mode != MissionMode.CAMPAIGN ||
+                save.seed != null && save.gridPlacement && !save.elevatedTerrain || save.wave !in 0 until save.mode.waveCount || save.tick !in 0..Long.MAX_VALUE / 2 ||
+                save.gold < 0 || save.lives !in 1..save.difficulty.startingLives ||
+                save.leaked != save.difficulty.startingLives - save.lives || save.kills < 0 || save.fieldRank < 1 ||
+                save.useUpperRoute && save.map.alternatePath == null || save.eliteOffered && (save.mode != MissionMode.CAMPAIGN || save.wave + 1 != ELITE_WAVE)
+            ) return null
+
+            val resolvedEnemies = (1..save.wave).sumOf { save.mode.plan(it, save.seed).enemies.size }
+            if (save.kills != resolvedEnemies - save.leaked || save.nextEnemyId != resolvedEnemies + 1L ||
+                save.nextTowerId <= 0L || save.nextTowerId > Long.MAX_VALUE / 2 ||
+                save.reports.size != save.wave || save.reports.sumOf { it.leaked } != save.leaked ||
+                save.reports.withIndex().any { (index, report) ->
+                    report.wave != index + 1 || !report.cleared || report.leaked < 0 || report.echoHits < 0 ||
+                        report.elite && (save.mode != MissionMode.CAMPAIGN || report.wave != ELITE_WAVE)
+                }
+            ) return null
+
+            val game = GameSimulation(save.map, save.difficulty, save.seed, save.fieldRank, save.tremorModule, save.mode,
+                save.railModule, save.research, save.elevatedTerrain, save.gridPlacement)
+            if (game.tremorModule != save.tremorModule || game.research != save.research) return null
+            var previousTowerId = 0L
+            for (tower in save.towers) {
+                if (tower.id <= previousTowerId || tower.id >= save.nextTowerId || tower.level !in 1..Tower.MAX_LEVEL ||
+                    tower.nextAttackTick !in 0..(save.tick + save.railModule.maxAttackInterval(tower.type)) ||
+                    tower.cannonSpecialization != CannonSpecialization.STANDARD &&
+                        (tower.type != TowerType.CANNON || tower.level != Tower.MAX_LEVEL) ||
+                    !game.isUnlocked(tower.type) || game.positionError(tower.x, tower.y) != null ||
+                    save.gridPlacement && BuildGrid.center(tower.x, tower.y) != Waypoint(tower.x, tower.y)
+                ) return null
+                game.mutableTowers += game.createTower(tower.type, tower.x, tower.y, tower.id).also { it.restore(tower) }
+                previousTowerId = tower.id
+            }
+            if (save.lastBuildUndoable && !save.hasUndoableBuild()) return null
+            val armedId = save.echo.armedTowerId
+            if (armedId != null && (save.wave >= game.totalWaves - 1 || game.towers.none { it.id == armedId })) return null
+
+            game.tick = save.tick
+            game.wave = save.wave
+            game.gold = save.gold
+            game.lives = save.lives
+            game.kills = save.kills
+            game.leakedEnemies = save.leaked
+            game.nextEnemyId = save.nextEnemyId
+            game.nextTowerId = save.nextTowerId
+            game.lastBuildUndoable = save.lastBuildUndoable
+            game.useUpperRoute = save.useUpperRoute
+            game.eliteOffered = save.eliteOffered
+            game.eliteActive = save.reports.lastOrNull()?.elite == true
+            game.mutableWaveReports.addAll(save.reports)
+            game.echo.restore(save.echo)
+            return game
+        }
 
         fun enemyCount(wave: Int): Int = Waves.enemyCount(wave)
         fun spawnIntervalTicks(wave: Int): Long = Waves.intervalTicks(wave)
@@ -231,3 +477,6 @@ class GameSimulation(
 
 enum class GameState { PREPARING, RUNNING, WON, LOST }
 data class ActionResult(val success: Boolean, val message: String, val towerId: Long? = null)
+
+
+data class WaveReport(val wave: Int, val leaked: Int, val echoHits: Int, val elite: Boolean, val cleared: Boolean)

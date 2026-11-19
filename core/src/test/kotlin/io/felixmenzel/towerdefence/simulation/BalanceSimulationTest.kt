@@ -59,7 +59,14 @@ class BalanceSimulationTest {
         for (battleMap in BattleMap.entries) {
             for (difficulty in Difficulty.entries) {
                 val game = playCampaign(GameSimulation(battleMap, difficulty)) {
-                    fortifyUsing(it, planFor(battleMap))
+                    val plan = if (battleMap == BattleMap.CORRIDOR) buildPlan.toMutableList().apply {
+                        // Cover the western bend and the Marshal approach from separate grid squares.
+                        this[1] = Placement(TowerType.RAPID, 381.0, 286.0)
+                        this[2] = Placement(TowerType.CANNON, 530.0, 226.0)
+                        this[12] = Placement(TowerType.SUNDER, 470.0, 252.0)
+                    } else planFor(battleMap)
+                    val reinforcements = if (it.wave >= Bastion.WAVE - 1) lateReinforcements(battleMap) else emptyList()
+                    fortifyUsing(it, plan + reinforcements)
                 }
 
                 val mission = "$battleMap / $difficulty"
@@ -74,6 +81,20 @@ class BalanceSimulationTest {
     }
 
     @Test
+    fun `the quick mission has a winning mixed defense on every difficulty`() {
+        val quickPlan = buildPlan.toMutableList().apply {
+            this[2] = Placement(TowerType.CANNON, 486.0, 270.0)
+        }
+        for (difficulty in Difficulty.entries) {
+            val game = playCampaign(GameSimulation(difficulty = difficulty, mode = MissionMode.QUICK)) {
+                fortifyUsing(it, quickPlan)
+            }
+            assertEquals(GameState.WON, game.state, difficulty.title)
+            assertEquals(6, game.wave)
+        }
+    }
+
+    @Test
     fun `twin locks remix can be cleared on veteran using the unlocked tremor`() {
         val plan = twinLocksPlan + Placement(TowerType.TREMOR, 545.0, 350.0)
         val game = playCampaign(GameSimulation(BattleMap.TWIN_LOCKS, Difficulty.VETERAN, seed = 583471, fieldRank = 2)) {
@@ -81,6 +102,23 @@ class BalanceSimulationTest {
         }
         assertEquals(GameState.WON, game.state)
         assertTrue(game.towers.any { it.type == TowerType.TREMOR })
+    }
+
+    @Test
+    fun `the upper lock can carry a full classic mission using its own placements`() {
+        val game = GameSimulation(BattleMap.TWIN_LOCKS)
+        assertTrue(game.switchRoute().success)
+        val upperPlan = twinLocksPlan.toMutableList()
+        upperPlan[1] = Placement(TowerType.RAPID, 275.0, 365.0)
+        upperPlan[2] = Placement(TowerType.CANNON, 330.0, 395.0)
+        upperPlan[3] = Placement(TowerType.FROST, 482.0, 375.0)
+        upperPlan[5] = Placement(TowerType.ARC, 490.0, 493.0)
+
+        playCampaign(game) { fortifyUsing(it, upperPlan) }
+
+        assertEquals(GameState.WON, game.state)
+        assertTrue(game.useUpperRoute)
+        assertTrue(game.lives > 0)
     }
 
     @Test
@@ -113,13 +151,16 @@ class BalanceSimulationTest {
     }
 
     @Test
-    fun `late assaults reward expanding beyond a smaller defense on veteran`() {
+    fun `late waves before the finale reward expanding beyond a smaller defense on veteran`() {
         for (map in listOf(BattleMap.CORRIDOR, BattleMap.SWITCHBACK)) {
-            fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty)) {
+            val beforeFinale = Bastion.WAVE - 1
+            fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty), throughWave = beforeFinale) {
                 fortifyUsing(it, planFor(map).take(8))
             }
 
-            assertEquals(GameState.WON, play(Difficulty.NORMAL).state, "$map on Normal")
+            val normal = play(Difficulty.NORMAL)
+            assertEquals(GameState.PREPARING, normal.state, "$map on Normal")
+            assertEquals(beforeFinale, normal.wave)
             val veteran = play(Difficulty.VETERAN)
             assertEquals(GameState.LOST, veteran.state, "$map on Veteran")
             assertTrue(veteran.wave > 10, "$map should survive the opening with this plan")
@@ -166,7 +207,12 @@ class BalanceSimulationTest {
         return game
     }
 
-    private fun fortify(game: GameSimulation) = fortifyUsing(game, buildPlan)
+    private fun fortify(game: GameSimulation) {
+        val plan = if (game.mode == MissionMode.CAMPAIGN && game.wave == Marshal.WAVE - 1) {
+            buildPlan + lateReinforcements(BattleMap.CORRIDOR)
+        } else buildPlan
+        fortifyUsing(game, plan)
+    }
 
     private fun fortifyUsing(game: GameSimulation, plan: List<Placement>) {
         // Fill the central bends first, then cover the exit. Commands enforce every cost.
@@ -224,12 +270,35 @@ class BalanceSimulationTest {
         Placement(TowerType.SUNDER, 435.0, 265.0),
     )
 
+    private fun lateReinforcements(map: BattleMap) = when (map) {
+        BattleMap.CORRIDOR -> listOf(
+            Placement(TowerType.ARC, 765.0, 158.0),
+            Placement(TowerType.RAIL, 555.0, 165.0),
+            Placement(TowerType.CANNON, 775.0, 38.0),
+        )
+        BattleMap.SWITCHBACK -> listOf(
+            Placement(TowerType.ARC, 777.0, 258.0),
+            Placement(TowerType.RAIL, 670.0, 206.0),
+            Placement(TowerType.CANNON, 781.0, 155.0),
+        )
+        BattleMap.CROSSWIND -> listOf(
+            Placement(TowerType.ARC, 636.0, 270.0),
+            Placement(TowerType.RAIL, 670.0, 79.0),
+            Placement(TowerType.CANNON, 800.0, 195.0),
+        )
+        BattleMap.TWIN_LOCKS -> listOf(
+            Placement(TowerType.ARC, 679.0, 493.0),
+            Placement(TowerType.RAIL, 850.0, 385.0),
+            Placement(TowerType.CANNON, 775.0, 505.0),
+        )
+    }
+
     private val crosswindPlan = listOf(
-        Placement(TowerType.RAPID, 125.0, 185.0),
+        Placement(TowerType.RAPID, 125.0, 229.0),
         Placement(TowerType.INFERNO, 482.0, 295.0),
         Placement(TowerType.FROST, 475.0, 432.0),
         Placement(TowerType.RAPID, 318.0, 180.0),
-        Placement(TowerType.SUNDER, 574.0, 340.0),
+        Placement(TowerType.SUNDER, 604.0, 346.0),
         Placement(TowerType.CANNON, 394.0, 278.0),
         Placement(TowerType.CANNON, 700.0, 225.0),
         Placement(TowerType.RAPID, 194.0, 205.0),

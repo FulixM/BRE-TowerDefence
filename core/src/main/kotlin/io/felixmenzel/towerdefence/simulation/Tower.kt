@@ -10,7 +10,12 @@ class Tower(
     attackIntervalTicks: Long,
     val id: Long = 0L,
     val type: TowerType = TowerType.RAPID,
+    val tremorModule: TremorModule = TremorModule.STANDARD,
+    val railModule: RailModule = RailModule.STANDARD,
+    private val researchReloadFactor: Double = 1.0,
+    private val terrain: BattleTerrain = BattleTerrain.FLAT,
 ) {
+    val height = terrain.heightAt(x, y)
     private val initialRange = range
     private val initialDamage = damage
     private val initialAttackInterval = attackIntervalTicks
@@ -25,6 +30,8 @@ class Tower(
     var level = 1
         private set
     var targetPriority = TargetPriority.FIRST
+        private set
+    var cannonSpecialization = CannonSpecialization.STANDARD
         private set
     private var totalInvestment = type.cost
     val range: Double get() = rangeAtLevel(level)
@@ -44,12 +51,38 @@ class Tower(
     private fun rangeAtLevel(level: Int) = initialRange + (level - 1) * 14.0
     private fun damageAtLevel(level: Int) = initialDamage * (1.0 + (level - 1) * 0.65)
     private fun attackIntervalAtLevel(level: Int) =
-        (initialAttackInterval * (1.0 - (level - 1) * 0.08)).toLong().coerceAtLeast(1L)
+        (initialAttackInterval * (1.0 - (level - 1) * 0.08) * cannonSpecialization.attackIntervalFactor *
+            railModule.intervalFactor(type) * researchReloadFactor).toLong().coerceAtLeast(1L)
 
     internal fun upgrade() {
         val upgrade = checkNotNull(nextUpgrade)
         totalInvestment += upgrade.cost
         level++
+    }
+
+    internal fun specializeCannon(specialization: CannonSpecialization): Boolean {
+        if (type != TowerType.CANNON || level != MAX_LEVEL ||
+            cannonSpecialization != CannonSpecialization.STANDARD || specialization == CannonSpecialization.STANDARD
+        ) return false
+
+        cannonSpecialization = specialization
+        return true
+    }
+
+    internal fun checkpoint() =
+        TowerCheckpoint(id, type, x, y, level, targetPriority, nextAttackTick, cannonSpecialization)
+
+    internal fun restore(checkpoint: TowerCheckpoint) {
+        check(level == 1) { "Restore requires a fresh tower" }
+        require(checkpoint.id == id && checkpoint.type == type && checkpoint.x == x && checkpoint.y == y)
+        require(checkpoint.level in 1..MAX_LEVEL && checkpoint.nextAttackTick >= 0L)
+
+        repeat(checkpoint.level - 1) { upgrade() }
+        if (checkpoint.cannonSpecialization != CannonSpecialization.STANDARD) {
+            require(specializeCannon(checkpoint.cannonSpecialization))
+        }
+        targetPriority = checkpoint.priority
+        nextAttackTick = checkpoint.nextAttackTick
     }
 
     internal fun cycleTargetPriority() {
@@ -65,7 +98,7 @@ class Tower(
             TargetPriority.NEAREST -> compareBy<Enemy>({ distanceSquaredTo(it) }, { it.id })
         }
         return enemies.asSequence()
-            .filter { it.isAlive && !it.hasReachedGoal && distanceSquaredTo(it) <= range * range }
+            .filter { it.canBeHit && inRange(it) }
             .minWithOrNull(comparator)
     }
 
@@ -73,25 +106,30 @@ class Tower(
         if (currentTick < nextAttackTick) return null
         val target = selectTarget(enemies) ?: return null
 
+        val impactRadius = when (type) {
+            TowerType.CANNON -> cannonSpecialization.radius
+            TowerType.TREMOR -> tremorModule.radius
+            TowerType.INFERNO -> range
+            else -> 0.0
+        }
         val hits = when (type) {
-            TowerType.CANNON, TowerType.TREMOR -> {
-                val radius = if (type == TowerType.TREMOR) TREMOR_RADIUS else SPLASH_RADIUS
-                enemies.filter { it.canBeHit && within(it, target, radius) }
-            }
-            TowerType.INFERNO -> enemies.filter { it.canBeHit && distanceSquaredTo(it) <= range * range }
+            TowerType.CANNON, TowerType.TREMOR -> enemies.filter { it.canBeHit && within(it, target, impactRadius) }
+            TowerType.INFERNO -> enemies.filter { it.canBeHit && inRange(it) }
             TowerType.ARC -> chainFrom(target, enemies)
             else -> listOf(target)
         }
 
         for ((index, enemy) in hits.withIndex()) {
-            applyTowerHit(type, enemy, damage, index)
+            applyTowerHit(type, enemy, damage, index, tremorModule, railModule)
         }
         val hitEnemyIds = hits.map { it.id }
         nextAttackTick = currentTick + attackIntervalTicks
         return Shot(
             x, y, target.x, target.y, type, currentTick, hitEnemyIds,
             arcJumps = if (type == TowerType.ARC) hits.drop(1).map { Waypoint(it.x, it.y) } else emptyList(),
-            areaRadius = if (type == TowerType.INFERNO) range else 0.0,
+            areaRadius = impactRadius,
+            tremorModule = tremorModule,
+            railModule = railModule,
         )
     }
 
@@ -118,6 +156,8 @@ class Tower(
         return dx * dx + dy * dy
     }
 
+    private fun inRange(enemy: Enemy) = terrain.canReach(x, y, height, range, enemy.x, enemy.y)
+
     private fun distanceSquaredTo(enemy: Enemy): Double {
         val dx = enemy.x - x
         val dy = enemy.y - y
@@ -127,7 +167,6 @@ class Tower(
     companion object {
         const val MAX_LEVEL = 3
         const val SPLASH_RADIUS = 58.0
-        const val TREMOR_RADIUS = 44.0
         private const val ARC_JUMP_RANGE = 76.0
 
     }
@@ -154,6 +193,39 @@ enum class TowerType(
     TREMOR("Tremor", 135, "Slows groups around the impact", 128.0, 10.0, 45L, requiredRank = 2),
 }
 
+enum class CannonSpecialization(val title: String, val radius: Double, val attackIntervalFactor: Double) {
+    STANDARD("Standard", Tower.SPLASH_RADIUS, 1.0),
+    WIDE("Wide", 76.0, 1.15),
+    RAPID("Rapid", 44.0, 0.75),
+}
+
+enum class TremorModule(val title: String, val radius: Double, val speedFactor: Double) {
+    STANDARD("Standard", 44.0, 0.70),
+    WIDE("Wide", 60.0, 0.80),
+    FOCUSED("Focused", 32.0, 0.55);
+
+    val slowPercent: Int get() = ((1.0 - speedFactor) * 100).roundToInt()
+
+    companion object {
+        const val REQUIRED_RANK = 3
+    }
+}
+
+enum class RailModule(
+    val title: String,
+    private val attackIntervalFactor: Double,
+    val shieldDamageFactor: Double,
+    val relayDamageFactor: Double,
+) {
+    STANDARD("Standard", 1.0, 1.0, 1.0),
+    RELAY_HUNTER("Relay Hunter", 1.25, 2.0, 1.25);
+
+    fun intervalFactor(type: TowerType): Double = if (type == TowerType.RAIL) attackIntervalFactor else 1.0
+
+    internal fun maxAttackInterval(type: TowerType): Long =
+        (type.baseAttackIntervalTicks * intervalFactor(type)).toLong()
+}
+
 /** A visual trace of an already resolved hit, not a second source of damage. */
 data class Shot(
     val fromX: Double,
@@ -166,7 +238,12 @@ data class Shot(
     val arcJumps: List<Waypoint> = emptyList(),
     val areaRadius: Double = 0.0,
     val isEcho: Boolean = false,
-)
+    val tremorModule: TremorModule = TremorModule.STANDARD,
+    val railModule: RailModule = RailModule.STANDARD,
+) {
+    // Older recordings did not store the Cannon radius.
+    internal val cannonSplashRadius: Double get() = if (areaRadius > 0.0) areaRadius else Tower.SPLASH_RADIUS
+}
 
 /** Exact next-level values, calculated by the same rules as the active tower stats. */
 data class TowerUpgrade(val cost: Int, val range: Double, val damage: Double, val attackIntervalTicks: Long)
@@ -179,14 +256,24 @@ enum class TargetPriority(val title: String) {
 
 private val ARC_DAMAGE_FACTORS = doubleArrayOf(1.0, 0.65, 0.4)
 
-internal fun applyTowerHit(type: TowerType, enemy: Enemy, damage: Double, impactIndex: Int = 0) {
+internal fun applyTowerHit(
+    type: TowerType,
+    enemy: Enemy,
+    damage: Double,
+    impactIndex: Int = 0,
+    tremorModule: TremorModule = TremorModule.STANDARD,
+    railModule: RailModule = RailModule.STANDARD,
+) {
     val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
-    if (type == TowerType.SUNDER) enemy.takeShieldbreakingDamage(damage)
-    else enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
+    when (type) {
+        TowerType.SUNDER -> enemy.takeShieldbreakingDamage(damage)
+        TowerType.RAIL -> enemy.takeRailDamage(damage, railModule)
+        else -> enemy.takeDamage(damage * strength)
+    }
     if (!enemy.isAlive) return
     when (type) {
         TowerType.FROST -> enemy.applySlow(0.55, 1.5)
-        TowerType.TREMOR -> enemy.applySlow(0.70, 1.1)
+        TowerType.TREMOR -> enemy.applySlow(tremorModule.speedFactor, 1.1)
         TowerType.VENOM -> enemy.applyPoison(damage, 3.0)
         TowerType.BEACON -> enemy.mark()
         else -> Unit

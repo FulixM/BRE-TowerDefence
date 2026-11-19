@@ -18,13 +18,18 @@ import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.Main
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
+import io.felixmenzel.towerdefence.simulation.CannonSpecialization
+import io.felixmenzel.towerdefence.simulation.FieldProfile
 import io.felixmenzel.towerdefence.simulation.GameSimulation
+import io.felixmenzel.towerdefence.simulation.MissionMode
+import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.Waypoint
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
 import io.felixmenzel.towerdefence.simulation.TargetPriority
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.TowerType
+import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.ui.DefenseScreen
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -52,7 +57,7 @@ object DesktopSmokeTest {
     private const val PROFILE_NAME = "bre-tower-defence-smoke"
 
     private class SmokeApplication : ApplicationAdapter() {
-        private val game = Main(PROFILE_NAME)
+        private var game = Main(PROFILE_NAME)
         private lateinit var screen: DefenseScreen
         private lateinit var simulation: GameSimulation
         private lateinit var viewport: FitViewport
@@ -61,20 +66,29 @@ object DesktopSmokeTest {
         private var missionSetupStage = 0
         private var missionSetupFrames = 0
         private var remixSeed: Int? = null
+        private var previousClipboard: String? = null
         private var frozenTick = 0L
         private var expectedRefund = 0
+        private var checkpointGold = 0
         private var screenshotWritten = false
         private var normalCapHeight = 0f
         private var normalNativeCapHeight = 0f
 
         override fun create() {
-            Gdx.app.getPreferences(PROFILE_NAME).clear()
-            Gdx.app.getPreferences(PROFILE_NAME).flush()
+            val preferences = Gdx.app.getPreferences(PROFILE_NAME)
+            preferences.clear()
+            preferences.putInteger("xp", 80).flush()
+            previousClipboard = Gdx.app.clipboard.contents
+            createGame()
+            ready = true
+        }
+
+        private fun createGame() {
             game.create()
+            game.resize(Gdx.graphics.width, Gdx.graphics.height)
             screen = game.getScreen<DefenseScreen>()
             simulation = privateField(screen, "simulation")
             viewport = privateField(screen, "viewport")
-            ready = true
         }
 
         override fun resize(width: Int, height: Int) {
@@ -116,10 +130,18 @@ object DesktopSmokeTest {
                     key(Input.Keys.NUM_1)
                 }
                 2 -> {
-                    click(220f, 240f + DefenseScreen.BOARD_Y)
+                    writeScreenshot("-build-guides")
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 1) { "Valid mouse placement did not build" }
                     check(simulation.gold == GameSimulation.START_GOLD - TowerType.RAPID.cost)
                     val tower = simulation.towers.single()
+                    check(tower.height == 2 && tower.x == 120.0 && tower.y == 214.0) { "Tower did not snap onto the summit square" }
+                    key(Input.Keys.NUM_1)
+                    val gold = simulation.gold
+                    click(102f, 212f + DefenseScreen.BOARD_Y)
+                    check(simulation.towers.size == 1 && simulation.gold == gold) { "Occupied square accepted a second build" }
+                    key(Input.Keys.ESCAPE)
+                    click(140f, 233f + DefenseScreen.BOARD_Y) // Select from anywhere in the same square.
                     check(tower.targetPriority == TargetPriority.FIRST)
                     key(Input.Keys.T)
                     check(tower.targetPriority == TargetPriority.STRONGEST) { "Target shortcut did not change selected tower" }
@@ -127,8 +149,12 @@ object DesktopSmokeTest {
                     check(tower.targetPriority == TargetPriority.NEAREST)
                     key(Input.Keys.T)
                     check(tower.targetPriority == TargetPriority.FIRST)
+                    val button = viewport.project(Vector2(1049f, 200f))
+                    Gdx.input.setCursorPosition(button.x.roundToInt(), (Gdx.graphics.height - button.y).roundToInt())
                 }
                 3 -> {
+                    checkUpgradeCoverage()
+                    writeScreenshot("-upgrade-preview")
                     val tower = simulation.towers.single()
                     val cost = checkNotNull(tower.upgradeCost)
                     val before = simulation.gold
@@ -155,20 +181,48 @@ object DesktopSmokeTest {
                     check(privateField<Long?>(privateField<Any>(simulation, "echo"), "armedTowerId") == null)
                 }
                 5 -> {
+                    val input = Gdx.input.inputProcessor
+                    val gold = simulation.gold
+                    key(Input.Keys.NUM_1)
+                    check(input.keyDown(Input.Keys.SHIFT_LEFT))
+                    check(input.keyDown(Input.Keys.SHIFT_RIGHT))
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
+                    check(privateField<TowerType?>(screen, "buildType") == TowerType.RAPID)
+                    check(input.keyUp(Input.Keys.SHIFT_LEFT))
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
+                    check(simulation.towers.size == 1 && simulation.gold == gold - TowerType.RAPID.cost)
+                    check(privateField<TowerType?>(screen, "buildType") == TowerType.RAPID)
+                    click(450f, 250f + DefenseScreen.BOARD_Y)
+                    check(input.keyUp(Input.Keys.SHIFT_RIGHT))
+                    check(simulation.towers.size == 2 && simulation.gold == gold - 2 * TowerType.RAPID.cost)
+                    check(privateField<TowerType?>(screen, "buildType") == null)
+                    check(privateField<Long?>(screen, "selectedTowerId") == simulation.towers.last().id)
+                }
+                6 -> {
+                    val gold = simulation.gold
+                    click(1111f, 607f)
+                    check(simulation.towers.size == 1 && simulation.gold == gold + TowerType.RAPID.cost)
+                    check(privateField<Long?>(screen, "selectedTowerId") == null)
+                    key(Input.Keys.NUM_1)
+                    click(450f, 250f + DefenseScreen.BOARD_Y)
+                    key(Input.Keys.Z)
+                    check(simulation.towers.size == 1 && simulation.gold == gold + TowerType.RAPID.cost)
+                }
+                7 -> {
                     frozenTick = simulation.tick
                     key(Input.Keys.R)
                 }
                 8 -> {
                     check(simulation.tick == frozenTick) { "Restart confirmation did not freeze simulation" }
                     key(Input.Keys.ESCAPE)
-                    check(simulation.towers.isEmpty())
+                    check(simulation.towers.size == 1)
                 }
                 9 -> {
                     key(Input.Keys.R)
                     key(Input.Keys.ENTER)
                     checkFreshMission()
                     key(Input.Keys.NUM_1)
-                    click(220f, 240f + DefenseScreen.BOARD_Y)
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
                     key(Input.Keys.NUM_2)
                     click(450f, 250f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 2)
@@ -221,7 +275,7 @@ object DesktopSmokeTest {
                     check(simulation.gold == before && simulation.towers.isEmpty())
                     click(100f, 80f + DefenseScreen.BOARD_Y)
                     val tower = simulation.towers.single()
-                    check(abs(tower.x - 100.0) <= 2.0 && abs(tower.y - 80.0) <= 2.0) {
+                    check(tower.x == 120.0 && tower.y == 82.0) {
                         "Resized click mapped to incorrect world position: ${tower.x}, ${tower.y}"
                     }
                     click(1110f, 520f) // Rail is the fourth catalogue entry.
@@ -254,22 +308,167 @@ object DesktopSmokeTest {
                     check(simulation.enemies.isNotEmpty())
                     writeScreenshot()
                     checkEnemyDefenses()
-                    finishProfileMission()
+                    key(Input.Keys.M)
+                }
+                301 -> {
+                    Gdx.app.clipboard.contents = "BRE1-C-N-583471"
+                    click(250f, 140f) // Paste a Remix code before replacing the active defence.
+                    click(332f, 184f)
                 }
                 302 -> {
-                    check(Gdx.app.getPreferences(PROFILE_NAME).getInteger("xp") == 120) {
-                        "A lost mission did not persist XP exactly once"
-                    }
+                    click(332f, 293f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.seed == 583471)
+                    finishProfileMission()
+                }
+                304 -> {
+                    val preferences = Gdx.app.getPreferences(PROFILE_NAME)
+                    check(preferences.getInteger("xp") == 200) { "A lost mission did not persist XP exactly once" }
+                    check(preferences.getString("remix.BRE1-C-N-583471") == "6,0,60") { "Remix best was not saved" }
+                    check(simulation.waveReports.count { it.cleared } == 6)
+                    check(!simulation.waveReports.last().cleared && simulation.waveReports.last().leaked > 0)
+                    click(652f, 236f) // Open the debrief from the result screen.
+                    check(privateField<Boolean>(screen, "reportOpen"))
+                }
+                305 -> {
+                    writeScreenshot("-mission-report")
+                    click(500f, 151f)
+                    check(!privateField<Boolean>(screen, "reportOpen"))
+                    check(simulation.state == GameState.LOST)
                     key(Input.Keys.ENTER)
                 }
-                303 -> {
-                    check(simulation.fieldRank == 2)
+                306 -> {
+                    check(simulation.fieldRank == 3 && simulation.seed == 583471)
+                    key(Input.Keys.M)
+                }
+                307 -> {
+                    click(260f, 104f) // Standard -> Wide.
+                    click(260f, 104f) // Wide -> Focused.
+                    click(332f, 184f)
+                }
+                308 -> {
+                    check(simulation.tremorModule == TremorModule.FOCUSED)
                     key(Input.Keys.NUM_0)
                     check(privateField<TowerType>(screen, "buildType") == TowerType.TREMOR)
                     click(150f, 220f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.single().type == TowerType.TREMOR)
+                    check(simulation.towers.single().tremorModule == TremorModule.FOCUSED)
+                    finishNextWaveForFixture()
+                    key(Input.Keys.U)
+                    key(Input.Keys.T)
+                    checkpointGold = simulation.gold
+                }
+                309 -> {
+                    game.dispose()
+                    game = Main(PROFILE_NAME)
+                    createGame()
+                    checkNotNull(privateField<GameSimulation?>(screen, "startupMission")) {
+                        "Relaunch did not load the local mission checkpoint"
+                    }
+                }
+                310 -> {
+                    click(332f, 293f) // Continue the saved mission on startup.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.state == GameState.PREPARING && simulation.seed == 583471)
+                    check(simulation.wave == 1 && simulation.waveReports.single().cleared)
+                    check(simulation.gold == checkpointGold)
+                    val tower = simulation.towers.single()
+                    check(tower.type == TowerType.TREMOR && tower.tremorModule == TremorModule.FOCUSED)
+                    check(tower.level == 2 && tower.targetPriority == TargetPriority.STRONGEST)
+                    check(privateField<GameSimulation?>(screen, "startupMission") == null)
+                    advanceToEliteOffer()
+                }
+                311 -> {
+                    click(815f, 606f) // Accept the optional elite wave through the HUD.
+                    check(simulation.eliteOffered)
+                    key(Input.Keys.SPACE)
+                    check(simulation.state == GameState.RUNNING && simulation.wave == GameSimulation.ELITE_WAVE)
+                    simulation.update()
+                    check(simulation.enemies.single().isElite)
+                }
+                312 -> key(Input.Keys.M)
+                313 -> {
+                    click(685f, 220f) // Quick mission.
+                    click(332f, 184f)
+                }
+                314 -> {
+                    click(332f, 293f) // Confirm replacing the live campaign.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.mode == MissionMode.QUICK && simulation.totalWaves == 6 && simulation.gold == 330)
+                    key(Input.Keys.NUM_2)
+                    click(150f, 230f + DefenseScreen.BOARD_Y)
+                    key(Input.Keys.U)
+                    finishNextWaveForFixture()
+                    key(Input.Keys.U)
+                    check(simulation.towers.single().level == 3)
+                }
+                315 -> {
+                    click(978f, 204f) // Choose Wide in the Cannon inspector.
+                    check(simulation.towers.single().cannonSpecialization == CannonSpecialization.WIDE)
+                    writeScreenshot("-quick-mission")
+                }
+                316 -> key(Input.Keys.M)
+                317 -> {
+                    click(685f, 220f) // Return from Quick to Campaign.
+                    click(332f, 184f)
+                }
+                318 -> {
+                    click(332f, 293f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.mode == MissionMode.CAMPAIGN && simulation.battleMap == BattleMap.CORRIDOR)
+                    repeat(simulation.totalWaves - 1) { finishNextWaveForFixture() }
+                    check(simulation.startWave().success)
+                    while (simulation.state == GameState.RUNNING) {
+                        simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
+                        simulation.update()
+                    }
+                    check(simulation.state == GameState.WON)
+                }
+                319 -> {
+                    check(Gdx.app.getPreferences(PROFILE_NAME).getBoolean("workshop.relay-hunter"))
+                    game.dispose()
+                    game = Main(PROFILE_NAME)
+                    createGame()
+                    key(Input.Keys.M)
+                }
+                320 -> {
+                    click(260f, 66f) // Equip the persisted Relay Hunter unlock.
+                    click(332f, 184f)
+                }
+                321 -> {
+                    check(simulation.railModule == RailModule.RELAY_HUNTER)
+                    key(Input.Keys.NUM_4)
+                    click(150f, 230f + DefenseScreen.BOARD_Y)
+                    val rail = simulation.towers.single()
+                    check(rail.railModule == RailModule.RELAY_HUNTER && rail.attackIntervalTicks == 143L)
+                }
+                322 -> key(Input.Keys.M)
+                323 -> click(707f, 547f) // Open the Workshop.
+                324 -> {
+                    val profile = privateField<FieldProfile>(screen, "profile")
+                    check(profile.research.available == 8)
+                    click(454f, 425f) // Buy Firepower rank 1.
+                    check(profile.research.available == 7 && profile.research.loadout.firepower == 1)
+                    check(simulation.research.firepower == 0)
+                    writeScreenshot("-workshop")
+                    game.dispose()
+                    game = Main(PROFILE_NAME)
+                    createGame()
+                }
+                325 -> {
+                    val profile = privateField<FieldProfile>(screen, "profile")
+                    check(profile.research.loadout.firepower == 1)
+                    click(332f, 293f) // Resume the checkpoint with its original research snapshot.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.research.firepower == 0)
+                    key(Input.Keys.R)
+                }
+                326 -> {
+                    key(Input.Keys.ENTER)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.research.firepower == 1)
                     screenshotWritten = true
-                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, enemy defenses, Remix, and field rank; screenshots saved.")
+                    println("Desktop smoke passed: controls, rendering, mission settings, checkpoint reload, tower modules, and campaign workshop research.")
                     Gdx.app.exit()
                 }
             }
@@ -368,19 +567,23 @@ object DesktopSmokeTest {
                     click(452f, 221f) // Reroll.
                     remixSeed = privateField<Int>(screen, "pendingSeed")
                     check(remixSeed != before)
+                    click(380f, 139f)
+                    check(Gdx.app.clipboard.contents == "BRE3-T-N-$remixSeed")
                     click(332f, 184f)
                     simulation = privateField(screen, "simulation")
-                    check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed)
+                    check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed && simulation.elevatedTerrain)
                 }
                 15 -> {
                     key(Input.Keys.NUM_0)
                     check(privateField<TowerType?>(screen, "buildType") == null)
+                    key(Input.Keys.V)
+                    check(simulation.useUpperRoute)
                     writeScreenshot("-twin-locks")
                     key(Input.Keys.R)
                 }
                 16 -> {
                     key(Input.Keys.ENTER)
-                    check(simulation.seed == remixSeed)
+                    check(simulation.seed == remixSeed && !simulation.useUpperRoute)
                     key(Input.Keys.M)
                 }
                 17 -> {
@@ -416,16 +619,15 @@ object DesktopSmokeTest {
             check(simulation.towers.isEmpty() && simulation.enemies.isEmpty() && simulation.shots.isEmpty())
         }
 
+        private fun advanceToEliteOffer() {
+            while (simulation.wave < GameSimulation.ELITE_WAVE - 1) finishNextWaveForFixture()
+            check(simulation.canOfferElite)
+        }
+
         private fun finishProfileMission() {
             simulation.restart()
             // Isolate profile rewards from the balance of a particular build.
-            repeat(5) {
-                check(simulation.startWave().success)
-                while (simulation.state == GameState.RUNNING) {
-                    simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
-                    simulation.update()
-                }
-            }
+            repeat(5) { finishNextWaveForFixture() }
             while (simulation.state != GameState.LOST) {
                 check(simulation.startWave().success)
                 while (simulation.state == GameState.RUNNING) simulation.update()
@@ -433,12 +635,21 @@ object DesktopSmokeTest {
             check(simulation.wave == 7)
         }
 
+        private fun finishNextWaveForFixture() {
+            check(simulation.startWave().success)
+            while (simulation.state == GameState.RUNNING) {
+                simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
+                simulation.update()
+            }
+            check(simulation.state == GameState.PREPARING)
+        }
+
         private fun checkEnemyDefenses() {
             val fixture = GameSimulation()
             val enemies = privateField<MutableList<Enemy>>(fixture, "mutableEnemies")
-            fun addEnemy(x: Double, type: EnemyType): Enemy {
+            fun addEnemy(x: Double, type: EnemyType, elite: Boolean = false): Enemy {
                 val route = listOf(Waypoint(x, 280.0), Waypoint(x + 100.0, 280.0))
-                return Enemy(enemies.size + 1L, route, 0.0, 100.0, type).also(enemies::add)
+                return Enemy(enemies.size + 1L, route, 0.0, 100.0, type, isElite = elite).also(enemies::add)
             }
 
             addEnemy(160.0, EnemyType.SHIELDED).takeDamage(15.0)
@@ -448,8 +659,18 @@ object DesktopSmokeTest {
                 takeDamage(50.0)
                 update(2.0)
             }
-            addEnemy(640.0, EnemyType.NORMAL).takeDamage(80.0)
+            addEnemy(640.0, EnemyType.NORMAL, elite = true).takeDamage(80.0)
             addEnemy(760.0, EnemyType.VANGUARD)
+            val commander = Enemy(101, listOf(Waypoint(400.0, 360.0), Waypoint(850.0, 360.0)),
+                0.0, 100.0, EnemyType.ARMORED, isCommander = true)
+            val escort = Enemy(102, listOf(Waypoint(500.0, 360.0), Waypoint(850.0, 360.0)),
+                0.0, 100.0, escortCommander = commander)
+            enemies.addAll(listOf(commander, escort))
+            val relay = Enemy(103, listOf(Waypoint(520.0, 410.0), Waypoint(850.0, 410.0)),
+                0.0, 100.0, EnemyType.SHIELDED, isMarshalRelay = true)
+            val marshal = Enemy(104, listOf(Waypoint(400.0, 410.0), Waypoint(850.0, 410.0)),
+                0.0, 100.0, EnemyType.ARMORED, isBoss = true, marshalRelays = listOf(relay))
+            enemies.addAll(listOf(relay, marshal))
 
             val renderer = privateField<WorldRenderer>(screen, "renderer")
             val projection = Matrix4(viewport.camera.combined).translate(0f, DefenseScreen.BOARD_Y, 0f)
@@ -470,6 +691,8 @@ object DesktopSmokeTest {
                     }
                 }
 
+                expectColor("marshal relay protection link", 460f, 410f, 0x6bcfff)
+                expectColor("commander protection link", 450f, 360f, 0x75eeb9)
                 expectColor("full health after shield absorbs a shot", 150f, 301f, 0x7ce7a2)
                 expectColor("remaining shield", 150f, 307f, 0x56dffa)
                 expectColor("spent part of shield", 170f, 307f, 0x080d17)
@@ -478,12 +701,30 @@ object DesktopSmokeTest {
                 expectColor("gap between armor plates", 403f, 307f, 0x080d17)
                 expectColor("active regeneration", 542f, 301f, 0xd5a1ff)
                 expectColor("critical health", 628f, 301f, 0xff7d83)
+                expectColor("elite marker beside the body", 616f, 280f, 0xffe08a)
                 expectColor("Vanguard shield", 750f, 307f, 0x56dffa)
                 expectColor("Vanguard armor above its shield", 760f, 314f, 0xffcb68)
             } finally {
                 pixels.dispose()
             }
             writeScreenshot("-enemy-defenses")
+        }
+
+        private fun checkUpgradeCoverage() {
+            // This point on the downhill route is reached by a level 2 Pulse at the summit.
+            val spot = viewport.project(Vector2(273f, DefenseScreen.BOARD_Y + 160f))
+            val pixels = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
+            try {
+                val x = (spot.x * pixels.width / Gdx.graphics.width).toInt()
+                val y = (spot.y * pixels.height / Gdx.graphics.height).toInt()
+                val pixel = pixels.getPixel(x, y) ushr 8
+                check(((pixel shr 16) and 255) > 200 && ((pixel shr 8) and 255) > 160 && (pixel and 255) < 160) {
+                    "Hovering Upgrade did not render a gold marker on the newly reachable route"
+                }
+                check(simulation.towers.single().level == 1) { "Hovering Upgrade bought the upgrade" }
+            } finally {
+                pixels.dispose()
+            }
         }
 
         private fun writeScreenshot(suffix: String = "") {
@@ -502,6 +743,7 @@ object DesktopSmokeTest {
 
         override fun dispose() {
             game.dispose()
+            Gdx.app.clipboard.contents = previousClipboard.orEmpty()
             Gdx.app.getPreferences(PROFILE_NAME).clear()
             Gdx.app.getPreferences(PROFILE_NAME).flush()
             check(screenshotWritten) { "Smoke application closed before completing all checks" }
