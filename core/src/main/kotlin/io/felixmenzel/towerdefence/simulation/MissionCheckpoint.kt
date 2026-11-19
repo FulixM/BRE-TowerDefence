@@ -34,7 +34,14 @@ internal data class MissionCheckpoint(
     val research: ResearchLoadout = ResearchLoadout.EMPTY,
     val elevatedTerrain: Boolean = false,
     val gridPlacement: Boolean = false,
+    val lastBuildUndoable: Boolean = false,
 )
+
+internal fun MissionCheckpoint.hasUndoableBuild(): Boolean {
+    val tower = towers.lastOrNull() ?: return false
+    return tower.id == nextTowerId - 1L && tower.level == 1 && tower.priority == TargetPriority.FIRST &&
+        tower.nextAttackTick == 0L && echo.armedTowerId != tower.id && gold <= Int.MAX_VALUE - tower.type.cost
+}
 
 internal data class TowerCheckpoint(
     val id: Long,
@@ -69,7 +76,7 @@ class MissionSaves(
 }
 
 private object MissionCheckpointCodec {
-    private const val VERSION = 6
+    private const val VERSION = 7
     private const val MAX_ENCODED_LENGTH = 1_000_000
     private const val MAX_TOWERS = 512
     private const val MAX_IMPACTS = 4096
@@ -145,6 +152,7 @@ private object MissionCheckpointCodec {
         ResearchTrack.entries.forEach { writeInt(checkpoint.research.level(it)) }
         writeBoolean(checkpoint.elevatedTerrain)
         writeBoolean(checkpoint.gridPlacement)
+        writeBoolean(checkpoint.lastBuildUndoable)
     }
 
     private fun DataInputStream.readCheckpoint(): MissionCheckpoint {
@@ -179,6 +187,7 @@ private object MissionCheckpointCodec {
             if (version < 4) ResearchLoadout.EMPTY else ResearchLoadout(readInt(), readInt(), readInt(), readInt()),
             version >= 5 && readFlag(),
             version >= 6 && readFlag(),
+            version >= 7 && readFlag(),
         )
     }
 
@@ -258,6 +267,7 @@ private object MissionCheckpointCodec {
         if (useUpperRoute && map.alternatePath == null) return false
         if (nextEnemyId !in 1..Long.MAX_VALUE / 2 || nextTowerId !in 1..Long.MAX_VALUE / 2) return false
 
+        if (lastBuildUndoable && !hasUndoableBuild()) return false
         val towerIds = towers.map { it.id }.toSet()
         if (towerIds.size != towers.size || echo.armedTowerId?.let { it !in towerIds } == true) return false
         if (towers.any { tower ->

@@ -66,6 +66,7 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 | G | Read the enemy guide and pause the current wave |
 | E | Arm or disarm the selected tower as the wave recorder |
 | U | Upgrade selected tower |
+| Z / Undo | Refund the last untouched build placed during preparation, before the next wave starts |
 | T | Cycle the selected tower’s target priority |
 | Space | Start the next wave; pause/resume during combat |
 | P | Pause/resume |

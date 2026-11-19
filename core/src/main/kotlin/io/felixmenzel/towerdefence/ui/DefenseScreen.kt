@@ -188,6 +188,7 @@ class DefenseScreen(
                     else if (simulation.state == GameState.PREPARING) startWave()
                     else togglePause()
                 }
+                Input.Keys.Z -> if (!paused) undoLastBuild()
                 Input.Keys.U -> if (!paused) selectedTower()?.let { report(simulation.upgradeTower(it.id)) }
                 Input.Keys.T -> if (!paused) selectedTower()?.let { report(simulation.cycleTargetPriority(it.id)) }
                 Input.Keys.F -> if (!paused) doubleSpeed = !doubleSpeed
@@ -384,6 +385,12 @@ class DefenseScreen(
         buildType = type
         selectedTowerId = null
         notify("${type.title}: click free ground to build. Right-click or Esc cancels.")
+    }
+
+    private fun undoLastBuild() {
+        val result = simulation.undoLastBuild()
+        if (result.success && selectedTowerId == result.towerId) selectedTowerId = null
+        report(result)
     }
 
     private fun selectedTower(): Tower? = simulation.towers.firstOrNull { it.id == selectedTowerId }
@@ -587,6 +594,7 @@ class DefenseScreen(
             choose = ::choose,
             openEnemyGuide = { enemyGuide = true },
             cancelPlacement = { buildType = null },
+            undoBuild = ::undoLastBuild,
             report = ::report,
             sell = { tower ->
                 report(simulation.sellTower(tower.id))
