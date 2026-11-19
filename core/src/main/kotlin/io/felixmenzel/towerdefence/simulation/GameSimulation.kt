@@ -2,6 +2,8 @@ package io.felixmenzel.towerdefence.simulation
 
 import java.util.Collections
 
+internal enum class EnemyEvent { SPAWNED, DEFEATED, LEAKED }
+
 /** Pure Kotlin game rules. Rendering and input never own gold, health, or damage. */
 class GameSimulation(
     val battleMap: BattleMap = BattleMap.CORRIDOR,
@@ -112,17 +114,20 @@ class GameSimulation(
     private var nextSpawnTick = 0L
     internal val echo = WaveEcho(terrain)
 
-    fun update() {
+    fun update() = update(null)
+
+    internal fun update(onEnemyEvent: ((EnemyEvent, Enemy) -> Unit)?) {
         tick++
         mutableShots.removeAll { tick - it.tick > SHOT_LIFETIME_TICKS }
         if (state != GameState.RUNNING) return
 
         if (remainingToSpawn > 0 && tick >= nextSpawnTick) {
-            spawnEnemy()
+            val spawned = spawnEnemy()
+            onEnemyEvent?.invoke(EnemyEvent.SPAWNED, spawned)
             nextSpawnTick = tick + waves[wave - 1].intervals[spawnedThisWave - 1]
         }
         for (enemy in mutableEnemies) enemy.update(STEP_SECONDS)
-        collectDefeatedEnemies()
+        collectDefeatedEnemies(onEnemyEvent)
         // A leak is resolved before towers fire: reaching the exit is definitive.
         val escaped = mutableEnemies.count { it.isAlive && it.hasReachedGoal }
         if (escaped > 0) {
@@ -130,7 +135,11 @@ class GameSimulation(
             leakedEnemies += escaped
             waveLeaks += escaped
             lives = (lives - escaped).coerceAtLeast(0)
-            mutableEnemies.removeAll { it.isAlive && it.hasReachedGoal }
+            mutableEnemies.removeAll { enemy ->
+                val leaked = enemy.isAlive && enemy.hasReachedGoal
+                if (leaked) onEnemyEvent?.invoke(EnemyEvent.LEAKED, enemy)
+                leaked
+            }
         }
         if (lives == 0 || bossBreached) {
             recordWave(cleared = false)
@@ -147,7 +156,7 @@ class GameSimulation(
             echo.record(tower, shot)
         }
         waveEchoHits += echo.replay(tick, mutableEnemies, mutableShots)
-        collectDefeatedEnemies()
+        collectDefeatedEnemies(onEnemyEvent)
         if (remainingToSpawn == 0 && mutableEnemies.isEmpty()) {
             gold += waveReward
             recordWave(cleared = true)
@@ -160,11 +169,12 @@ class GameSimulation(
         mutableWaveReports += WaveReport(wave, waveLeaks, waveEchoHits, eliteActive, cleared)
     }
 
-    private fun collectDefeatedEnemies() {
+    private fun collectDefeatedEnemies(onEnemyEvent: ((EnemyEvent, Enemy) -> Unit)?) {
         mutableEnemies.removeAll { enemy ->
             if (enemy.isAlive) return@removeAll false
             kills++
             gold += enemy.bounty
+            onEnemyEvent?.invoke(EnemyEvent.DEFEATED, enemy)
             true
         }
     }
@@ -380,7 +390,7 @@ class GameSimulation(
 
     private fun canManageTowers() = state == GameState.PREPARING || state == GameState.RUNNING
 
-    private fun spawnEnemy() {
+    private fun spawnEnemy(): Enemy {
         val plan = waves[wave - 1]
         val type = plan.enemies[spawnedThisWave]
         val elite = eliteActive && spawnedThisWave < ELITE_COUNT
@@ -403,11 +413,13 @@ class GameSimulation(
         val health = type.baseHealth * mode.healthMultiplier(wave) * difficulty.healthMultiplier * healthFactor
         val relays = if (marshal) mutableEnemies.filter { it.isMarshalRelay } else null
         val speed = if (relay) EnemyType.ARMORED.baseSpeed else type.baseSpeed
-        mutableEnemies += Enemy(nextEnemyId++, path, speed, health, type,
+        val enemy = Enemy(nextEnemyId++, path, speed, health, type,
             isElite = elite, isBoss = boss || marshal, isCommander = isCommander, escortCommander = escortCommander,
             isMarshalRelay = relay, marshalRelays = relays)
+        mutableEnemies += enemy
         spawnedThisWave++
         remainingToSpawn--
+        return enemy
     }
 
     companion object {

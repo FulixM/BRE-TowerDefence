@@ -72,6 +72,7 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 | Space | Start the next wave; pause/resume during combat |
 | P | Pause/resume |
 | F | Toggle 1x / 2x speed |
+| F8 / SFX | Toggle combat sounds (saved in the local profile) |
 | Right-click / Esc | Cancel placement or selection; Esc otherwise pauses |
 | R | Request restart; confirm with Enter/R or cancel with Esc |
 

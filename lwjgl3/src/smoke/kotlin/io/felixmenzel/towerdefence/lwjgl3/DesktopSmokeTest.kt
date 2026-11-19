@@ -49,7 +49,7 @@ object DesktopSmokeTest {
             setSamples(4)
             useVsync(false)
             setForegroundFPS(60)
-            disableAudio(true)
+            disableAudio(!java.lang.Boolean.getBoolean("bre.smoke.audio"))
         }
         Lwjgl3Application(SmokeApplication(), config)
     }
@@ -234,6 +234,11 @@ object DesktopSmokeTest {
                 }
                 30 -> {
                     check(simulation.tick > 0L && simulation.enemies.isNotEmpty())
+                    click(791f, 679f)
+                    val preferences = Gdx.app.getPreferences(PROFILE_NAME)
+                    check(!preferences.getBoolean("audio.sfx", true))
+                    key(Input.Keys.F8)
+                    check(preferences.getBoolean("audio.sfx", false))
                     click(800f, 40f) // Use the charge on the selected tower.
                     check(simulation.overdriveTowerId == simulation.towers.last().id)
                     check(!simulation.canActivateOverdrive)
