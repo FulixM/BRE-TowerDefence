@@ -91,23 +91,39 @@ internal object Waves {
 
 
 enum class MissionMode(val title: String) {
-    CAMPAIGN("Campaign"), QUICK("Quick mission");
+    CAMPAIGN("Campaign"), QUICK("Quick mission"), FRONTLINE("Shifting Front");
 
-    val waveCount: Int get() = if (this == QUICK) quickWaves.size else Waves.total
+    val waveCount: Int get() = when (this) {
+        CAMPAIGN -> Waves.total
+        QUICK -> quickWaves.size
+        FRONTLINE -> 8
+    }
 
-    fun startingGold(difficulty: Difficulty): Int = if (this == QUICK) 330 else difficulty.startingGold
+    internal val supportsElevation: Boolean get() = this != QUICK
+
+    fun startingGold(difficulty: Difficulty): Int = if (this == CAMPAIGN) difficulty.startingGold else 330
 
     internal fun plan(wave: Int, seed: Int?): WavePlan =
         if (this == QUICK) quickWaves[wave - 1].plan else Waves.plan(wave, seed)
 
     internal fun waveName(wave: Int): String? =
-        if (this == QUICK) quickWaves.getOrNull(wave - 1)?.name else Waves.name(wave)
+        when (this) {
+            QUICK -> quickWaves.getOrNull(wave - 1)?.name
+            FRONTLINE -> if (frontlineSwitch(wave)) "Front shift" else Waves.name(wave)
+            CAMPAIGN -> Waves.name(wave)
+        }
 
     internal fun healthMultiplier(wave: Int): Double =
         if (this == QUICK) quickWaves[wave - 1].health else Waves.healthMultiplier(wave)
 
     internal fun supports(map: BattleMap, seed: Int?): Boolean =
-        this == CAMPAIGN || map == BattleMap.CORRIDOR && seed == null
+        when (this) {
+            CAMPAIGN -> true
+            QUICK -> map == BattleMap.CORRIDOR && seed == null
+            FRONTLINE -> map == BattleMap.TWIN_LOCKS && seed == null
+        }
+
+    internal fun frontlineSwitch(wave: Int): Boolean = this == FRONTLINE && (wave == 3 || wave == 6)
 }
 
 private class QuickWave(

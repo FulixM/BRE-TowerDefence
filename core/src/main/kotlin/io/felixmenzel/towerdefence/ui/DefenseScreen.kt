@@ -70,6 +70,9 @@ class DefenseScreen(
     private val loop = FixedStepLoop { simulation.update() }
     private var selectedTowerId: Long? = null
     private var buildType: TowerType? = null
+    private var movePending = false
+    private var damageOpen = false
+    private var damageWholeRun = false
     private var paused = false
     private var doubleSpeed = false
     private var restartConfirmation = false
@@ -96,6 +99,7 @@ class DefenseScreen(
     private val input = object : InputAdapter() {
         override fun touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean {
             if (button == Input.Buttons.RIGHT) {
+                movePending = false
                 buildType = null
                 selectedTowerId = null
                 return true
@@ -103,7 +107,7 @@ class DefenseScreen(
             if (button != Input.Buttons.LEFT) return false
             val point = uiPoint(screenX, screenY) ?: return false
             if (hud.click(point, overlayOnly = isModal())) return true
-            if (isModal()) return true
+            if (isModal() || damageOpen && insideDamagePanel(point)) return true
             if (point.x in 0f..BOARD_WIDTH && point.y in BOARD_Y..BOARD_Y + BOARD_HEIGHT) {
                 clickBoard(point.x.toDouble(), (point.y - BOARD_Y).toDouble())
                 return true
@@ -177,7 +181,9 @@ class DefenseScreen(
                 }
                 Input.Keys.P -> togglePause()
                 Input.Keys.ESCAPE -> {
-                    if (buildType != null || selectedTowerId != null) {
+                    if (movePending) movePending = false
+                    else if (damageOpen) damageOpen = false
+                    else if (buildType != null || selectedTowerId != null) {
                         buildType = null
                         selectedTowerId = null
                     } else togglePause()
@@ -283,6 +289,7 @@ class DefenseScreen(
     }
 
     private fun startWave() {
+        movePending = false
         saveCheckpoint(force = true)
         val result = simulation.startWave()
         if (!checkpointError || !result.success) report(result)
@@ -320,7 +327,7 @@ class DefenseScreen(
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
         val cursor = uiPoint(Gdx.input.x, Gdx.input.y)
         val onBoard = cursor != null && cursor.x in 0f..BOARD_WIDTH &&
-            cursor.y in BOARD_Y..BOARD_Y + BOARD_HEIGHT && !isModal()
+            cursor.y in BOARD_Y..BOARD_Y + BOARD_HEIGHT && !isModal() && !(damageOpen && insideDamagePanel(cursor))
         val tower = selectedTower()
         val previewUpgrade = buildType == null && tower?.upgradeCost != null && !isModal() && isUpgradeHovered(cursor)
         worldProjection.set(camera.combined).translate(0f, BOARD_Y, 0f)
@@ -360,6 +367,16 @@ class DefenseScreen(
     }
 
     private fun clickBoard(x: Double, y: Double) {
+        if (movePending) {
+            val tower = selectedTower()
+            if (tower == null) movePending = false
+            else {
+                val result = simulation.moveTower(tower.id, x, y)
+                report(result)
+                if (result.success) movePending = false
+            }
+            return
+        }
         val existing = simulation.towerAt(x, y)
         if (existing != null && (buildType == null || !simulation.gridPlacement)) {
             selectedTowerId = existing.id
@@ -382,6 +399,7 @@ class DefenseScreen(
             notify("${type.title} unlocks at field rank ${type.requiredRank}.", true)
             return
         }
+        movePending = false
         buildType = type
         selectedTowerId = null
         notify("${type.title}: click free ground to build. Right-click or Esc cancels.")
@@ -423,6 +441,9 @@ class DefenseScreen(
     }
 
     private fun resetMissionInterface() {
+        movePending = false
+        damageOpen = false
+        damageWholeRun = false
         checkpointDirty = false
         checkpointError = false
         resultXp = null
@@ -515,6 +536,15 @@ class DefenseScreen(
         }
     }
 
+    private fun toggleFrontline() {
+        if (pendingMode == MissionMode.FRONTLINE) pendingMode = MissionMode.CAMPAIGN
+        else {
+            pendingMode = MissionMode.FRONTLINE
+            pendingMap = BattleMap.TWIN_LOCKS
+            pendingSeed = null
+        }
+    }
+
     private fun updateResearch(updated: ResearchProgress, message: String) {
         workshopMessage = try {
             persistResearch(updated)
@@ -536,7 +566,7 @@ class DefenseScreen(
         val railModule = if (profile.relayHunterUnlocked) pendingRailModule else RailModule.STANDARD
         simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule,
             pendingMode, railModule, profile.research.loadout,
-            elevatedTerrain = pendingMode == MissionMode.CAMPAIGN && (pendingSeed == null || pendingElevatedTerrain),
+            elevatedTerrain = pendingMode.supportsElevation && (pendingSeed == null || pendingElevatedTerrain),
             gridPlacement = pendingSeed == null || pendingGridPlacement)
         resetMissionInterface()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
@@ -579,7 +609,11 @@ class DefenseScreen(
         rect(0f, 638f, WIDTH, 2f, BORDER)
         rect(900f, 80f, 2f, 560f, BORDER)
         text("BRE / TOWER DEFENCE", 24f, 703f, 1.2f, WHITE)
-        val missionTitle = if (simulation.mode == MissionMode.QUICK) "QUICK / CORRIDOR" else simulation.battleMap.title.uppercase()
+        val missionTitle = when (simulation.mode) {
+            MissionMode.QUICK -> "QUICK / CORRIDOR"
+            MissionMode.FRONTLINE -> "SHIFTING FRONT"
+            MissionMode.CAMPAIGN -> simulation.battleMap.title.uppercase()
+        }
         text("$missionTitle / ${simulation.difficulty.title.uppercase()}", 25f, 667f, 0.75f, MUTED)
         button("Mission [M]", 250f, 650f, 117f, 30f, scale = 0.8f) { openMissionSetup() }
         stat("GOLD", simulation.gold.toString(), 386f, GOLD)
@@ -589,6 +623,9 @@ class DefenseScreen(
         button("Pause [P]", 938f, 660f, 112f, 40f) { togglePause() }
         button("Restart [R]", 1063f, 660f, 113f, 40f) { restartConfirmation = true }
 
+        button(if (damageOpen) "Damage ^" else "Damage v", 1050f, 620f, 126f, 18f, scale = 0.75f, accent = CYAN) {
+            damageOpen = !damageOpen
+        }
         drawTowerPanel(
             simulation, selectedTower(), buildType, previewUpgrade,
             choose = ::choose,
@@ -599,6 +636,7 @@ class DefenseScreen(
             sell = { tower ->
                 report(simulation.sellTower(tower.id))
                 selectedTowerId = null
+                movePending = false
             },
         )
 
@@ -625,7 +663,28 @@ class DefenseScreen(
         button(nextLabel, 565f, 20f, startWidth, 43f, preparing, CYAN, scale = if (hasSwitch) 0.77f else 0.90f) {
             startWave()
         }
-        if (hasSwitch) {
+        if (simulation.mode == MissionMode.FRONTLINE) {
+            val lock = if (simulation.useUpperRoute) "Upper" else "Lower"
+            val route = if (simulation.hasRearGuard) "$lock + rear guard" else "$lock lock"
+            text(route, 761f, 48f, 0.76f, CYAN, 115f)
+            if (preparing) {
+                val echoTime = simulation.echoPreviewTicks
+                if (echoTime != null) {
+                    val seconds = "%.1f".format(java.util.Locale.ROOT, echoTime.toDouble() / GameSimulation.UPS)
+                    button("Echo at ${seconds}s / ${if (simulation.echoDelayed) "+3s" else "original"}",
+                        520f, 122f, 173f, 27f, enabled = simulation.canChooseEchoDelay, accent = ECHO, scale = 0.72f) {
+                        report(simulation.toggleEchoDelay())
+                    }
+                }
+                if (simulation.canMoveTower) {
+                    button(if (movePending) "Cancel move" else "Move tower (1)", 707f, 122f, 168f, 27f,
+                        enabled = selectedTower() != null, accent = CYAN, scale = 0.80f) {
+                        movePending = !movePending
+                        if (movePending) notify("Choose a free square for the selected tower.")
+                    }
+                }
+            }
+        } else if (hasSwitch) {
             val lock = if (simulation.useUpperRoute) "Upper" else "Lower"
             button("$lock lock [V]", 761f, 20f, 114f, 43f, preparing, CYAN, scale = 0.78f) {
                 report(simulation.switchRoute())
@@ -678,6 +737,7 @@ class DefenseScreen(
                 selected = simulation.eliteOffered, scale = 0.78f) { report(simulation.toggleElite()) }
         }
 
+        if (damageOpen && !isModal()) drawDamagePanel(simulation, damageWholeRun) { damageWholeRun = it }
         endHud()
         if (isModal()) {
             beginOverlay()
@@ -736,6 +796,7 @@ class DefenseScreen(
                     }
                 },
                 toggleQuick = ::toggleQuickMission,
+                toggleFrontline = ::toggleFrontline,
                 cycleModule = ::cycleModule,
                 toggleRailModule = {
                     if (profile.relayHunterUnlocked) pendingRailModule = when (pendingRailModule) {
@@ -827,6 +888,7 @@ class DefenseScreen(
         rect(140f, 516f, 720f, 4f, CYAN)
         text("CONTINUE DEFENCE?", 182f, 473f, 1.85f, WHITE)
         val mode = if (saved.mode == MissionMode.QUICK) " / Quick"
+        else if (saved.mode == MissionMode.FRONTLINE) " / Shifting Front"
         else saved.challenge?.let { " / Remix ${it.seed}" }.orEmpty()
         text("${saved.battleMap.title} / ${saved.difficulty.title}$mode", 182f, 421f, 1f, MUTED, 636f)
         text("Before wave ${saved.wave + 1} / ${saved.lives} lives / ${saved.gold}g", 182f, 384f, 0.95f, CYAN)

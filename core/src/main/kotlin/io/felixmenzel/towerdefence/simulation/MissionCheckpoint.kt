@@ -35,7 +35,19 @@ internal data class MissionCheckpoint(
     val elevatedTerrain: Boolean = false,
     val gridPlacement: Boolean = false,
     val lastBuildUndoable: Boolean = false,
+    val towerMoved: Boolean = false,
+    val echoDelaySpent: Boolean = false,
+    val echoDelayed: Boolean = false,
+    val damageWave: Map<TowerType, Double> = emptyMap(),
+    val damageRun: Map<TowerType, Double> = emptyMap(),
 )
+
+internal fun MissionCheckpoint.hasValidFrontlineAndDamage(): Boolean =
+    (mode == MissionMode.FRONTLINE || !towerMoved && !echoDelaySpent && !echoDelayed) &&
+        (!towerMoved || wave > 0) && (!echoDelaySpent || wave > 1) &&
+        (!echoDelayed || !echoDelaySpent && echo.impacts.isNotEmpty()) &&
+        damageRun.values.all { it.isFinite() && it > 0.0 } &&
+        damageWave.all { (type, amount) -> amount.isFinite() && amount > 0.0 && amount <= (damageRun[type] ?: 0.0) }
 
 internal fun MissionCheckpoint.hasUndoableBuild(): Boolean {
     val tower = towers.lastOrNull() ?: return false
@@ -76,7 +88,7 @@ class MissionSaves(
 }
 
 private object MissionCheckpointCodec {
-    private const val VERSION = 7
+    private const val VERSION = 8
     private const val MAX_ENCODED_LENGTH = 1_000_000
     private const val MAX_TOWERS = 512
     private const val MAX_IMPACTS = 4096
@@ -153,6 +165,26 @@ private object MissionCheckpointCodec {
         writeBoolean(checkpoint.elevatedTerrain)
         writeBoolean(checkpoint.gridPlacement)
         writeBoolean(checkpoint.lastBuildUndoable)
+        writeBoolean(checkpoint.towerMoved)
+        writeBoolean(checkpoint.echoDelaySpent)
+        writeBoolean(checkpoint.echoDelayed)
+        writeDamage(checkpoint.damageWave)
+        writeDamage(checkpoint.damageRun)
+    }
+
+    private fun DataOutputStream.writeDamage(damage: Map<TowerType, Double>) {
+        writeInt(damage.size)
+        for ((type, amount) in damage) {
+            writeUTF(type.name)
+            writeDouble(amount)
+        }
+    }
+
+    private fun DataInputStream.readDamage(): Map<TowerType, Double> {
+        val entries = boundedList(TowerType.entries.size) { TowerType.valueOf(readUTF()) to readDouble() }
+        val damage = entries.toMap()
+        require(entries.size == damage.size)
+        return damage
     }
 
     private fun DataInputStream.readCheckpoint(): MissionCheckpoint {
@@ -188,6 +220,11 @@ private object MissionCheckpointCodec {
             version >= 5 && readFlag(),
             version >= 6 && readFlag(),
             version >= 7 && readFlag(),
+            version >= 8 && readFlag(),
+            version >= 8 && readFlag(),
+            version >= 8 && readFlag(),
+            if (version >= 8) readDamage() else emptyMap(),
+            if (version >= 8) readDamage() else emptyMap(),
         )
     }
 
@@ -259,7 +296,7 @@ private object MissionCheckpointCodec {
     }
 
     private fun MissionCheckpoint.isValid(): Boolean {
-        if (!mode.supports(map, seed) || elevatedTerrain && mode != MissionMode.CAMPAIGN || wave !in 0 until mode.waveCount || tick !in 0..Long.MAX_VALUE / 2) return false
+        if (!mode.supports(map, seed) || elevatedTerrain && !mode.supportsElevation || wave !in 0 until mode.waveCount || tick !in 0..Long.MAX_VALUE / 2) return false
         if (seed != null && gridPlacement && !elevatedTerrain) return false
         if (!ResearchLoadout.appliesTo(mode, seed) && research != ResearchLoadout.EMPTY) return false
         if (gold < 0 || lives !in 1..difficulty.startingLives || kills < 0 || leaked < 0) return false
@@ -267,7 +304,7 @@ private object MissionCheckpointCodec {
         if (useUpperRoute && map.alternatePath == null) return false
         if (nextEnemyId !in 1..Long.MAX_VALUE / 2 || nextTowerId !in 1..Long.MAX_VALUE / 2) return false
 
-        if (lastBuildUndoable && !hasUndoableBuild()) return false
+        if (!hasValidFrontlineAndDamage() || lastBuildUndoable && !hasUndoableBuild()) return false
         val towerIds = towers.map { it.id }.toSet()
         if (towerIds.size != towers.size || echo.armedTowerId?.let { it !in towerIds } == true) return false
         if (towers.any { tower ->

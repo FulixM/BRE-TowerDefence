@@ -49,7 +49,7 @@ class BuildGridTest {
         val saves = MissionSaves({ value }, { value = it })
         val snapshot = assertNotNull(legacy.checkpoint())
         saves.save(snapshot)
-        val payload = Base64.getDecoder().decode(value).dropLast(6).toByteArray()
+        val payload = Base64.getDecoder().decode(value).dropLast(17).toByteArray()
         ByteBuffer.wrap(payload).putInt(5)
         val checksum = CRC32().apply { update(payload) }.value.toInt()
         value = Base64.getEncoder().encodeToString(payload + ByteBuffer.allocate(4).putInt(checksum).array())

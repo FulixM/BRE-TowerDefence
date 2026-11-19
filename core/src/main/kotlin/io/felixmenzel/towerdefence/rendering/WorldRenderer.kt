@@ -192,8 +192,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         if (simulation.gridPlacement) drawBuildGrid(palette, placing)
         if (simulation.battleMap == BattleMap.SWITCHBACK) drawRelayTrim()
         simulation.inactivePath?.let { alternate ->
-            drawPath(alternate, 48f, palette.majorGrid)
-            drawPath(alternate, 42f, palette.grid)
+            drawPath(alternate, 48f, if (simulation.hasRearGuard) ECHO else palette.majorGrid)
+            drawPath(alternate, 42f, if (simulation.hasRearGuard) palette.lane else palette.grid)
         }
         drawPath(simulation.path, 48f, palette.laneEdge)
         drawPath(simulation.path, 42f, palette.lane)
