@@ -13,9 +13,11 @@ class GameSimulation(
     val railModule: RailModule = RailModule.STANDARD,
     research: ResearchLoadout = ResearchLoadout.EMPTY,
     val elevatedTerrain: Boolean = mode == MissionMode.CAMPAIGN,
+    val gridPlacement: Boolean = seed == null || elevatedTerrain,
 ) {
     init {
         require(mode.supports(battleMap, seed) && (!elevatedTerrain || mode == MissionMode.CAMPAIGN))
+        require(seed == null || !gridPlacement || elevatedTerrain)
     }
 
     val research = if (ResearchLoadout.appliesTo(mode, seed)) research else ResearchLoadout.EMPTY
@@ -28,7 +30,7 @@ class GameSimulation(
     val path: List<Waypoint> get() = if (useUpperRoute) checkNotNull(battleMap.alternatePath) else battleMap.path
     val inactivePath: List<Waypoint>? get() = if (useUpperRoute) battleMap.path else battleMap.alternatePath
     val challenge: RemixChallenge? = seed?.takeIf { it in RemixChallenge.SEED_RANGE }?.let {
-        RemixChallenge(battleMap, difficulty, it, elevatedTerrain)
+        RemixChallenge(battleMap, difficulty, it, elevatedTerrain, gridPlacement)
     }
     private val mutableEnemies = mutableListOf<Enemy>()
     private val mutableTowers = mutableListOf<Tower>()
@@ -186,7 +188,8 @@ class GameSimulation(
         if (!isUnlocked(type)) return ActionResult(false, "${type.title} unlocks at field rank ${type.requiredRank}")
         placementError(x, y)?.let { return ActionResult(false, it) }
         if (gold < type.cost) return ActionResult(false, "Need ${type.cost} gold for ${type.title}")
-        val tower = createTower(type, x, y, nextTowerId++)
+        val position = checkNotNull(buildPosition(x, y))
+        val tower = createTower(type, position.x, position.y, nextTowerId++)
         mutableTowers += tower
         gold -= type.cost
         return ActionResult(true, "${type.title} built", tower.id)
@@ -241,8 +244,23 @@ class GameSimulation(
         return ActionResult(true, "Sold for ${tower.sellValue} gold")
     }
 
+    internal fun buildPosition(x: Double, y: Double): Waypoint? =
+        if (gridPlacement) BuildGrid.center(x, y) else Waypoint(x, y)
+
+    fun towerAt(x: Double, y: Double): Tower? {
+        if (!gridPlacement) return towers.firstOrNull { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) <= 24.0 * 24.0 }
+        val center = BuildGrid.center(x, y) ?: return null
+        return towers.firstOrNull { it.x == center.x && it.y == center.y }
+    }
+
     /** Shared by commands and the placement preview, so invalid previews cannot spend money. */
     fun placementError(x: Double, y: Double): String? {
+        if (!gridPlacement) return positionError(x, y)
+        val center = BuildGrid.center(x, y) ?: return "Choose a square on the map"
+        return positionError(center.x, center.y)
+    }
+
+    private fun positionError(x: Double, y: Double): String? {
         if (!x.isFinite() || !y.isFinite()) return "Choose a position on the map"
         if (x < BUILD_MARGIN || x > WORLD_WIDTH - BUILD_MARGIN || y < BUILD_MARGIN || y > WORLD_HEIGHT - BUILD_MARGIN) {
             return "Keep the tower inside the map"
@@ -251,7 +269,7 @@ class GameSimulation(
             if (distanceToSegmentSquared(x, y, start, end) < PATH_CLEARANCE * PATH_CLEARANCE) return "Keep the route clear"
         }
         if (mutableTowers.any { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) < TOWER_SPACING * TOWER_SPACING }) {
-            return "Too close to another tower"
+            return if (gridPlacement) "This square already has a tower" else "Too close to another tower"
         }
         return null
     }
@@ -277,7 +295,7 @@ class GameSimulation(
         return MissionCheckpoint(
             battleMap, difficulty, seed, fieldRank, tremorModule, useUpperRoute,
             tick, wave, gold, lives, kills, leakedEnemies, nextEnemyId, nextTowerId, eliteOffered,
-            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule, research, elevatedTerrain,
+            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule, research, elevatedTerrain, gridPlacement,
         )
     }
 
@@ -360,7 +378,8 @@ class GameSimulation(
             25 + wave * 5 + if (elite) ELITE_REWARD else 0
 
         internal fun restore(save: MissionCheckpoint): GameSimulation? {
-            if (!save.mode.supports(save.map, save.seed) || save.elevatedTerrain && save.mode != MissionMode.CAMPAIGN || save.wave !in 0 until save.mode.waveCount || save.tick !in 0..Long.MAX_VALUE / 2 ||
+            if (!save.mode.supports(save.map, save.seed) || save.elevatedTerrain && save.mode != MissionMode.CAMPAIGN ||
+                save.seed != null && save.gridPlacement && !save.elevatedTerrain || save.wave !in 0 until save.mode.waveCount || save.tick !in 0..Long.MAX_VALUE / 2 ||
                 save.gold < 0 || save.lives !in 1..save.difficulty.startingLives ||
                 save.leaked != save.difficulty.startingLives - save.lives || save.kills < 0 || save.fieldRank < 1 ||
                 save.useUpperRoute && save.map.alternatePath == null || save.eliteOffered && (save.mode != MissionMode.CAMPAIGN || save.wave + 1 != ELITE_WAVE)
@@ -377,7 +396,7 @@ class GameSimulation(
             ) return null
 
             val game = GameSimulation(save.map, save.difficulty, save.seed, save.fieldRank, save.tremorModule, save.mode,
-                save.railModule, save.research, save.elevatedTerrain)
+                save.railModule, save.research, save.elevatedTerrain, save.gridPlacement)
             if (game.tremorModule != save.tremorModule || game.research != save.research) return null
             var previousTowerId = 0L
             for (tower in save.towers) {
@@ -385,7 +404,8 @@ class GameSimulation(
                     tower.nextAttackTick !in 0..(save.tick + save.railModule.maxAttackInterval(tower.type)) ||
                     tower.cannonSpecialization != CannonSpecialization.STANDARD &&
                         (tower.type != TowerType.CANNON || tower.level != Tower.MAX_LEVEL) ||
-                    !game.isUnlocked(tower.type) || game.placementError(tower.x, tower.y) != null
+                    !game.isUnlocked(tower.type) || game.positionError(tower.x, tower.y) != null ||
+                    save.gridPlacement && BuildGrid.center(tower.x, tower.y) != Waypoint(tower.x, tower.y)
                 ) return null
                 game.mutableTowers += game.createTower(tower.type, tower.x, tower.y, tower.id).also { it.restore(tower) }
                 previousTowerId = tower.id

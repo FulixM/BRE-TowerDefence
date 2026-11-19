@@ -83,6 +83,7 @@ class DefenseScreen(
     private var pendingDifficulty = simulation.difficulty
     private var pendingSeed = simulation.seed
     private var pendingElevatedTerrain = simulation.elevatedTerrain
+    private var pendingGridPlacement = simulation.gridPlacement
     private var pendingMode = simulation.mode
     private var pendingModule = simulation.tremorModule
     private var pendingRailModule = simulation.railModule
@@ -347,8 +348,8 @@ class DefenseScreen(
     }
 
     private fun clickBoard(x: Double, y: Double) {
-        val existing = simulation.towers.firstOrNull { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) <= 24.0 * 24.0 }
-        if (existing != null) {
+        val existing = simulation.towerAt(x, y)
+        if (existing != null && (buildType == null || !simulation.gridPlacement)) {
             selectedTowerId = existing.id
             buildType = null
             return
@@ -396,7 +397,7 @@ class DefenseScreen(
             simulation = GameSimulation(
                 simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank, simulation.tremorModule,
                 simulation.mode, simulation.railModule, research,
-                elevated,
+                elevated, simulation.gridPlacement,
             )
         } else simulation.restart()
         resetMissionInterface()
@@ -428,6 +429,7 @@ class DefenseScreen(
         pendingDifficulty = simulation.difficulty
         pendingSeed = simulation.seed
         pendingElevatedTerrain = simulation.elevatedTerrain
+        pendingGridPlacement = simulation.gridPlacement
         pendingMode = simulation.mode
         pendingModule = simulation.tremorModule
         pendingRailModule = if (profile.relayHunterUnlocked) simulation.railModule else RailModule.STANDARD
@@ -456,7 +458,7 @@ class DefenseScreen(
         return if (next == pendingSeed) 100000 + (next - 99999) % 900000 else next
     }
 
-    private fun pendingChallenge() = pendingSeed?.let { RemixChallenge(pendingMap, pendingDifficulty, it, pendingElevatedTerrain) }
+    private fun pendingChallenge() = pendingSeed?.let { RemixChallenge(pendingMap, pendingDifficulty, it, pendingElevatedTerrain, pendingGridPlacement) }
 
     private fun copyChallenge() {
         val challenge = pendingChallenge() ?: return
@@ -477,6 +479,7 @@ class DefenseScreen(
         pendingDifficulty = challenge.difficulty
         pendingSeed = challenge.seed
         pendingElevatedTerrain = challenge.elevatedTerrain
+        pendingGridPlacement = challenge.gridPlacement
         setupFeedback = "Loaded ${challenge.code}"
         setupError = false
     }
@@ -515,7 +518,8 @@ class DefenseScreen(
         val railModule = if (profile.relayHunterUnlocked) pendingRailModule else RailModule.STANDARD
         simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule,
             pendingMode, railModule, profile.research.loadout,
-            elevatedTerrain = pendingMode == MissionMode.CAMPAIGN && (pendingSeed == null || pendingElevatedTerrain))
+            elevatedTerrain = pendingMode == MissionMode.CAMPAIGN && (pendingSeed == null || pendingElevatedTerrain),
+            gridPlacement = pendingSeed == null || pendingGridPlacement)
         resetMissionInterface()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -701,12 +705,14 @@ class DefenseScreen(
                     if (pendingMode == MissionMode.CAMPAIGN) {
                         pendingSeed = if (pendingSeed == null) newSeed() else null
                         pendingElevatedTerrain = true
+                        pendingGridPlacement = true
                     }
                 },
                 reroll = {
                     if (pendingMode == MissionMode.CAMPAIGN) {
                         pendingSeed = newSeed()
                         pendingElevatedTerrain = true
+                        pendingGridPlacement = true
                     }
                 },
                 toggleQuick = ::toggleQuickMission,

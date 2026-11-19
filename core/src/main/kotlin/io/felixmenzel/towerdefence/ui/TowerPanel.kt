@@ -79,7 +79,7 @@ private fun HudCanvas.buildPanel(type: TowerType, simulation: GameSimulation, ca
         else -> type.description
     }
     text(description, 922f, 230f, 0.88f, WHITE, 250f)
-    text("Click clear ground to build.", 922f, 175f, 0.80f, MUTED, 250f)
+    text(if (simulation.gridPlacement) "Choose a free square." else "Click clear ground to build.", 922f, 175f, 0.80f, MUTED, 250f)
     button("Cancel placement [Esc]", 922f, 116f, 254f, 40f) { cancelPlacement() }
 }
 

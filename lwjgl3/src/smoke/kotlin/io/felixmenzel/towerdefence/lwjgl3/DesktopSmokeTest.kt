@@ -134,7 +134,13 @@ object DesktopSmokeTest {
                     check(simulation.towers.size == 1) { "Valid mouse placement did not build" }
                     check(simulation.gold == GameSimulation.START_GOLD - TowerType.RAPID.cost)
                     val tower = simulation.towers.single()
-                    check(tower.height == 2) { "Classic preview position is not on the summit" }
+                    check(tower.height == 2 && tower.x == 120.0 && tower.y == 214.0) { "Tower did not snap onto the summit square" }
+                    key(Input.Keys.NUM_1)
+                    val gold = simulation.gold
+                    click(102f, 212f + DefenseScreen.BOARD_Y)
+                    check(simulation.towers.size == 1 && simulation.gold == gold) { "Occupied square accepted a second build" }
+                    key(Input.Keys.ESCAPE)
+                    click(140f, 233f + DefenseScreen.BOARD_Y) // Select from anywhere in the same square.
                     check(tower.targetPriority == TargetPriority.FIRST)
                     key(Input.Keys.T)
                     check(tower.targetPriority == TargetPriority.STRONGEST) { "Target shortcut did not change selected tower" }
@@ -237,7 +243,7 @@ object DesktopSmokeTest {
                     check(simulation.gold == before && simulation.towers.isEmpty())
                     click(100f, 80f + DefenseScreen.BOARD_Y)
                     val tower = simulation.towers.single()
-                    check(abs(tower.x - 100.0) <= 2.0 && abs(tower.y - 80.0) <= 2.0) {
+                    check(tower.x == 120.0 && tower.y == 82.0) {
                         "Resized click mapped to incorrect world position: ${tower.x}, ${tower.y}"
                     }
                     click(1110f, 520f) // Rail is the fourth catalogue entry.
@@ -530,7 +536,7 @@ object DesktopSmokeTest {
                     remixSeed = privateField<Int>(screen, "pendingSeed")
                     check(remixSeed != before)
                     click(380f, 139f)
-                    check(Gdx.app.clipboard.contents == "BRE2-T-N-$remixSeed")
+                    check(Gdx.app.clipboard.contents == "BRE3-T-N-$remixSeed")
                     click(332f, 184f)
                     simulation = privateField(screen, "simulation")
                     check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed && simulation.elevatedTerrain)

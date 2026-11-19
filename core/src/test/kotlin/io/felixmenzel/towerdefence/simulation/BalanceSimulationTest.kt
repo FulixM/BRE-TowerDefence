@@ -60,8 +60,9 @@ class BalanceSimulationTest {
             for (difficulty in Difficulty.entries) {
                 val game = playCampaign(GameSimulation(battleMap, difficulty)) {
                     val plan = if (battleMap == BattleMap.CORRIDOR) buildPlan.toMutableList().apply {
-                        // Move the central Rapid onto the summit and leave room for the later Sunder.
-                        this[1] = Placement(TowerType.RAPID, 425.0, 286.0)
+                        // Cover the western bend and the Marshal approach from separate grid squares.
+                        this[1] = Placement(TowerType.RAPID, 381.0, 286.0)
+                        this[2] = Placement(TowerType.CANNON, 530.0, 226.0)
                         this[12] = Placement(TowerType.SUNDER, 470.0, 252.0)
                     } else planFor(battleMap)
                     val reinforcements = if (it.wave >= Bastion.WAVE - 1) lateReinforcements(battleMap) else emptyList()
@@ -81,8 +82,13 @@ class BalanceSimulationTest {
 
     @Test
     fun `the quick mission has a winning mixed defense on every difficulty`() {
+        val quickPlan = buildPlan.toMutableList().apply {
+            this[2] = Placement(TowerType.CANNON, 486.0, 270.0)
+        }
         for (difficulty in Difficulty.entries) {
-            val game = playCampaign(GameSimulation(difficulty = difficulty, mode = MissionMode.QUICK), prepare = ::fortify)
+            val game = playCampaign(GameSimulation(difficulty = difficulty, mode = MissionMode.QUICK)) {
+                fortifyUsing(it, quickPlan)
+            }
             assertEquals(GameState.WON, game.state, difficulty.title)
             assertEquals(6, game.wave)
         }
@@ -288,11 +294,11 @@ class BalanceSimulationTest {
     }
 
     private val crosswindPlan = listOf(
-        Placement(TowerType.RAPID, 125.0, 185.0),
+        Placement(TowerType.RAPID, 125.0, 229.0),
         Placement(TowerType.INFERNO, 482.0, 295.0),
         Placement(TowerType.FROST, 475.0, 432.0),
         Placement(TowerType.RAPID, 318.0, 180.0),
-        Placement(TowerType.SUNDER, 574.0, 340.0),
+        Placement(TowerType.SUNDER, 604.0, 346.0),
         Placement(TowerType.CANNON, 394.0, 278.0),
         Placement(TowerType.CANNON, 700.0, 225.0),
         Placement(TowerType.RAPID, 194.0, 205.0),
