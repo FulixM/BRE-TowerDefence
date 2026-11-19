@@ -77,7 +77,7 @@ internal class WaveEcho {
 
     private fun RecordedImpact.resolve(tick: Long, enemies: List<Enemy>): Shot {
         val hitIds = when (shot.type) {
-            TowerType.CANNON -> hitArea(enemies, shot.toX, shot.toY, Tower.SPLASH_RADIUS)
+            TowerType.CANNON -> hitArea(enemies, shot.toX, shot.toY, shot.cannonSplashRadius)
             TowerType.TREMOR -> hitArea(enemies, shot.toX, shot.toY, shot.tremorModule.radius)
             TowerType.INFERNO -> hitArea(enemies, shot.fromX, shot.fromY, shot.areaRadius)
             else -> buildList {

@@ -27,6 +27,8 @@ class Tower(
         private set
     var targetPriority = TargetPriority.FIRST
         private set
+    var cannonSpecialization = CannonSpecialization.STANDARD
+        private set
     private var totalInvestment = type.cost
     val range: Double get() = rangeAtLevel(level)
     val damage: Double get() = damageAtLevel(level)
@@ -45,7 +47,8 @@ class Tower(
     private fun rangeAtLevel(level: Int) = initialRange + (level - 1) * 14.0
     private fun damageAtLevel(level: Int) = initialDamage * (1.0 + (level - 1) * 0.65)
     private fun attackIntervalAtLevel(level: Int) =
-        (initialAttackInterval * (1.0 - (level - 1) * 0.08)).toLong().coerceAtLeast(1L)
+        (initialAttackInterval * (1.0 - (level - 1) * 0.08) * cannonSpecialization.attackIntervalFactor)
+            .toLong().coerceAtLeast(1L)
 
     internal fun upgrade() {
         val upgrade = checkNotNull(nextUpgrade)
@@ -53,7 +56,17 @@ class Tower(
         level++
     }
 
-    internal fun checkpoint() = TowerCheckpoint(id, type, x, y, level, targetPriority, nextAttackTick)
+    internal fun specializeCannon(specialization: CannonSpecialization): Boolean {
+        if (type != TowerType.CANNON || level != MAX_LEVEL ||
+            cannonSpecialization != CannonSpecialization.STANDARD || specialization == CannonSpecialization.STANDARD
+        ) return false
+
+        cannonSpecialization = specialization
+        return true
+    }
+
+    internal fun checkpoint() =
+        TowerCheckpoint(id, type, x, y, level, targetPriority, nextAttackTick, cannonSpecialization)
 
     internal fun restore(checkpoint: TowerCheckpoint) {
         check(level == 1) { "Restore requires a fresh tower" }
@@ -61,6 +74,9 @@ class Tower(
         require(checkpoint.level in 1..MAX_LEVEL && checkpoint.nextAttackTick >= 0L)
 
         repeat(checkpoint.level - 1) { upgrade() }
+        if (checkpoint.cannonSpecialization != CannonSpecialization.STANDARD) {
+            require(specializeCannon(checkpoint.cannonSpecialization))
+        }
         targetPriority = checkpoint.priority
         nextAttackTick = checkpoint.nextAttackTick
     }
@@ -86,11 +102,14 @@ class Tower(
         if (currentTick < nextAttackTick) return null
         val target = selectTarget(enemies) ?: return null
 
+        val impactRadius = when (type) {
+            TowerType.CANNON -> cannonSpecialization.radius
+            TowerType.TREMOR -> tremorModule.radius
+            TowerType.INFERNO -> range
+            else -> 0.0
+        }
         val hits = when (type) {
-            TowerType.CANNON, TowerType.TREMOR -> {
-                val radius = if (type == TowerType.TREMOR) tremorModule.radius else SPLASH_RADIUS
-                enemies.filter { it.canBeHit && within(it, target, radius) }
-            }
+            TowerType.CANNON, TowerType.TREMOR -> enemies.filter { it.canBeHit && within(it, target, impactRadius) }
             TowerType.INFERNO -> enemies.filter { it.canBeHit && distanceSquaredTo(it) <= range * range }
             TowerType.ARC -> chainFrom(target, enemies)
             else -> listOf(target)
@@ -104,11 +123,7 @@ class Tower(
         return Shot(
             x, y, target.x, target.y, type, currentTick, hitEnemyIds,
             arcJumps = if (type == TowerType.ARC) hits.drop(1).map { Waypoint(it.x, it.y) } else emptyList(),
-            areaRadius = when (type) {
-                TowerType.INFERNO -> range
-                TowerType.TREMOR -> tremorModule.radius
-                else -> 0.0
-            },
+            areaRadius = impactRadius,
             tremorModule = tremorModule,
         )
     }
@@ -171,6 +186,12 @@ enum class TowerType(
     TREMOR("Tremor", 135, "Slows groups around the impact", 128.0, 10.0, 45L, requiredRank = 2),
 }
 
+enum class CannonSpecialization(val title: String, val radius: Double, val attackIntervalFactor: Double) {
+    STANDARD("Standard", Tower.SPLASH_RADIUS, 1.0),
+    WIDE("Wide", 76.0, 1.15),
+    RAPID("Rapid", 44.0, 0.75),
+}
+
 enum class TremorModule(val title: String, val radius: Double, val speedFactor: Double) {
     STANDARD("Standard", 44.0, 0.70),
     WIDE("Wide", 60.0, 0.80),
@@ -196,7 +217,10 @@ data class Shot(
     val areaRadius: Double = 0.0,
     val isEcho: Boolean = false,
     val tremorModule: TremorModule = TremorModule.STANDARD,
-)
+) {
+    // Older recordings did not store the Cannon radius.
+    internal val cannonSplashRadius: Double get() = if (areaRadius > 0.0) areaRadius else Tower.SPLASH_RADIUS
+}
 
 /** Exact next-level values, calculated by the same rules as the active tower stats. */
 data class TowerUpgrade(val cost: Int, val range: Double, val damage: Double, val attackIntervalTicks: Long)

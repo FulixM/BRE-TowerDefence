@@ -2,6 +2,7 @@ package io.felixmenzel.towerdefence.ui
 
 import io.felixmenzel.towerdefence.rendering.towerColor
 import io.felixmenzel.towerdefence.simulation.ActionResult
+import io.felixmenzel.towerdefence.simulation.CannonSpecialization
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.Tower
@@ -78,7 +79,11 @@ private fun HudCanvas.buildPanel(type: TowerType, module: TremorModule, cancelPl
 private fun HudCanvas.selectedPanel(
     tower: Tower, simulation: GameSimulation, report: (ActionResult) -> Unit, sell: (Tower) -> Unit,
 ) {
-    val module = if (tower.type == TowerType.TREMOR) " / ${tower.tremorModule.title.uppercase()}" else ""
+    val module = when {
+        tower.type == TowerType.TREMOR -> " / ${tower.tremorModule.title.uppercase()}"
+        tower.cannonSpecialization != CannonSpecialization.STANDARD -> " / ${tower.cannonSpecialization.title.uppercase()}"
+        else -> ""
+    }
     text("${tower.type.title.uppercase()}$module / LEVEL ${tower.level}", 922f, 313f, 0.95f, towerColor(tower.type))
     val upgrade = tower.nextUpgrade
     val cost = upgrade?.cost
@@ -88,8 +93,25 @@ private fun HudCanvas.selectedPanel(
         922f, 263f, 0.86f, MUTED)
     text("Rate ${formatRate(tower.attackIntervalTicks)}" + (upgrade?.let { " -> ${formatRate(it.attackIntervalTicks)}" } ?: "") + " shots/s",
         922f, 241f, 0.83f, MUTED)
-    button(if (cost == null) "Fully upgraded" else "Upgrade [U]  /  $cost gold", 922f, 179f, 254f, 42f,
-        cost != null && simulation.gold >= cost, towerColor(tower.type)) { report(simulation.upgradeTower(tower.id)) }
+    if (tower.type == TowerType.CANNON && tower.level == Tower.MAX_LEVEL) {
+        if (tower.cannonSpecialization == CannonSpecialization.STANDARD) {
+            text("Choose once / no gold cost", 922f, 227f, 0.72f, MUTED)
+            val choices = listOf(CannonSpecialization.WIDE, CannonSpecialization.RAPID)
+            choices.forEachIndexed { index, choice ->
+                val x = 922f + index * 130f
+                button(choice.title, x, 195f, 124f, 21f, scale = 0.72f, accent = ORANGE) {
+                    report(simulation.specializeCannon(tower.id, choice))
+                }
+                val rateLabel = if (choice == CannonSpecialization.WIDE) "slower" else "faster"
+                text("${choice.radius.toInt()} radius / $rateLabel", x + 4f, 190f, 0.69f, MUTED)
+            }
+        } else {
+            text("Splash radius ${tower.cannonSpecialization.radius.toInt()}", 922f, 206f, 0.85f, ORANGE)
+        }
+    } else {
+        button(if (cost == null) "Fully upgraded" else "Upgrade [U]  /  $cost gold", 922f, 179f, 254f, 42f,
+            cost != null && simulation.gold >= cost, towerColor(tower.type)) { report(simulation.upgradeTower(tower.id)) }
+    }
     button("Sell  /  +${tower.sellValue} gold", 922f, 123f, 254f, 40f, accent = ORANGE) {
         sell(tower)
     }

@@ -1,7 +1,6 @@
 package io.felixmenzel.towerdefence.ui
 
 import com.badlogic.gdx.graphics.Color
-import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.WaveReport
 import io.felixmenzel.towerdefence.ui.HudPalette.BACKGROUND
 import io.felixmenzel.towerdefence.ui.HudPalette.BORDER
@@ -14,8 +13,7 @@ import io.felixmenzel.towerdefence.ui.HudPalette.PANEL
 import io.felixmenzel.towerdefence.ui.HudPalette.RED
 import io.felixmenzel.towerdefence.ui.HudPalette.WHITE
 
-internal fun HudCanvas.drawWaveReport(reports: List<WaveReport>, close: () -> Unit) {
-    val totalWaves = GameSimulation.TOTAL_WAVES
+internal fun HudCanvas.drawWaveReport(reports: List<WaveReport>, totalWaves: Int, close: () -> Unit) {
     val cleared = reports.count { it.cleared }
     rect(140f, 110f, 720f, 478f, OVERLAY)
     rect(140f, 584f, 720f, 4f, CYAN)

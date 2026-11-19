@@ -44,7 +44,13 @@ class RemixRecords(
     private val load: (String) -> String = { "" },
     private val save: (String, String) -> Unit = { _, _ -> },
 ) {
-    internal fun best(challenge: RemixChallenge): RemixScore? = RemixScore.decode(load(challenge.code))
+    internal fun best(challenge: RemixChallenge): RemixScore? = best(challenge.code)
+
+    internal fun quickBest(difficulty: Difficulty): RemixScore? = best(quickKey(difficulty))
+
+    private fun best(key: String): RemixScore? = RemixScore.decode(load(key))
+
+    private fun quickKey(difficulty: Difficulty) = "QUICK1-${difficulty.code}"
 
     internal fun submit(game: GameSimulation): Boolean {
         val (code, score) = improvedRecord(game) ?: return false
@@ -53,15 +59,15 @@ class RemixRecords(
     }
 
     internal fun improvedRecord(game: GameSimulation): Pair<String, String>? {
-        val challenge = game.challenge ?: return null
+        val key = if (game.mode == MissionMode.QUICK) quickKey(game.difficulty) else game.challenge?.code ?: return null
         val cleared = when (game.state) {
             GameState.WON -> game.wave
             GameState.LOST -> game.wave - 1
             else -> return null
         }
         val score = RemixScore(cleared, game.lives, game.kills)
-        val previous = best(challenge)
+        val previous = best(key)
         if (previous != null && score <= previous) return null
-        return challenge.code to score.encode()
+        return key to score.encode()
     }
 }
