@@ -18,6 +18,7 @@ import io.felixmenzel.towerdefence.simulation.FixedStepLoop
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.MissionSaves
+import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.RemixChallenge
 import io.felixmenzel.towerdefence.simulation.RemixRecords
 import io.felixmenzel.towerdefence.simulation.TremorModule
@@ -43,7 +44,7 @@ class DefenseScreen(
     private val profile: FieldProfile = FieldProfile(),
     private val records: RemixRecords = RemixRecords(),
     private val saves: MissionSaves = MissionSaves(),
-    private val persistResult: ((Int, Pair<String, String>?) -> Unit)? = null,
+    private val persistResult: ((Int, Pair<String, String>?, Boolean) -> Unit)? = null,
 ) : KtxScreen {
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(WIDTH, HEIGHT, camera)
@@ -60,6 +61,7 @@ class DefenseScreen(
     private var resultXp: Int? = null
     private var profileSaveFailed = false
     private var newRemixBest = false
+    private var newRelayHunter = false
     private val loop = FixedStepLoop { simulation.update() }
     private var selectedTowerId: Long? = null
     private var buildType: TowerType? = null
@@ -75,6 +77,7 @@ class DefenseScreen(
     private var pendingSeed = simulation.seed
     private var pendingMode = simulation.mode
     private var pendingModule = simulation.tremorModule
+    private var pendingRailModule = simulation.railModule
     private var setupFeedback = ""
     private var setupError = false
     private var message = "Choose a tower, place it beside the route, then start wave 1."
@@ -308,6 +311,7 @@ class DefenseScreen(
     private fun claimMissionResult() {
         try {
             val persist = persistResult
+            val relayHunter = profile.relayHunterAfterMission(simulation)
             if (persist == null) {
                 check(clearCheckpoint())
                 resultXp = profile.award(simulation.state, simulation.wave)
@@ -315,11 +319,12 @@ class DefenseScreen(
             } else {
                 val total = profile.totalAfterMission(simulation.state, simulation.wave)
                 val best = records.improvedRecord(simulation)
-                persist(total, best)
+                persist(total, best, relayHunter)
                 hasCheckpoint = false
                 resultXp = profile.applyTotal(total)
                 newRemixBest = best != null
             }
+            newRelayHunter = profile.applyRelayHunterUnlock(relayHunter)
         } catch (failure: RuntimeException) {
             Gdx.app.error("Profile", "Unable to save the mission result", failure)
             profileSaveFailed = true
@@ -373,7 +378,7 @@ class DefenseScreen(
         if (simulation.fieldRank != profile.rank) {
             simulation = GameSimulation(
                 simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank, simulation.tremorModule,
-                simulation.mode,
+                simulation.mode, simulation.railModule,
             )
         } else simulation.restart()
         resetMissionInterface()
@@ -386,6 +391,7 @@ class DefenseScreen(
         resultXp = null
         profileSaveFailed = false
         newRemixBest = false
+        newRelayHunter = false
         loop.reset()
         paused = false
         doubleSpeed = false
@@ -403,6 +409,7 @@ class DefenseScreen(
         pendingSeed = simulation.seed
         pendingMode = simulation.mode
         pendingModule = simulation.tremorModule
+        pendingRailModule = if (profile.relayHunterUnlocked) simulation.railModule else RailModule.STANDARD
         setupFeedback = ""
         setupError = false
         missionSetup = true
@@ -467,7 +474,8 @@ class DefenseScreen(
 
     private fun launchMission() {
         if (!clearCheckpoint()) return
-        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule, pendingMode)
+        val railModule = if (profile.relayHunterUnlocked) pendingRailModule else RailModule.STANDARD
+        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule, pendingMode, railModule)
         resetMissionInterface()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -636,7 +644,7 @@ class DefenseScreen(
         if (missionSetup && !missionLaunchConfirmation) {
             drawMissionSetup(
                 pendingMap, pendingDifficulty, pendingSeed, pendingMode,
-                pendingModule, profile.rank,
+                pendingModule, profile.rank, pendingRailModule, profile.relayHunterUnlocked,
                 if (pendingMode == MissionMode.QUICK) records.quickBest(pendingDifficulty) else pendingChallenge()?.let(records::best),
                 setupFeedback, setupError,
                 selectMap = { if (pendingMode.supports(it, pendingSeed)) pendingMap = it },
@@ -647,6 +655,12 @@ class DefenseScreen(
                 reroll = { if (pendingMode == MissionMode.CAMPAIGN) pendingSeed = newSeed() },
                 toggleQuick = ::toggleQuickMission,
                 cycleModule = ::cycleModule,
+                toggleRailModule = {
+                    if (profile.relayHunterUnlocked) pendingRailModule = when (pendingRailModule) {
+                        RailModule.STANDARD -> RailModule.RELAY_HUNTER
+                        RailModule.RELAY_HUNTER -> RailModule.STANDARD
+                    }
+                },
                 copyCode = ::copyChallenge,
                 importCode = ::importChallenge,
                 launch = ::requestLaunch,
@@ -698,6 +712,7 @@ class DefenseScreen(
             if (simulation.fieldRank < TremorModule.REQUIRED_RANK && profile.rank >= TremorModule.REQUIRED_RANK) {
                 unlocks.add("Tremor modules")
             }
+            if (newRelayHunter) unlocks.add("Rail: Relay Hunter")
             val unlockLabel = unlocks.joinToString()
             text(if (unlockLabel.isEmpty()) xpLabel else "$xpLabel  /  Unlocked $unlockLabel",
                 182f, 336f, 0.92f, GOLD, 636f)

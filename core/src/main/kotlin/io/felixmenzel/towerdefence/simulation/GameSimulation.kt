@@ -10,6 +10,7 @@ class GameSimulation(
     val fieldRank: Int = 1,
     tremorModule: TremorModule = TremorModule.STANDARD,
     val mode: MissionMode = MissionMode.CAMPAIGN,
+    val railModule: RailModule = RailModule.STANDARD,
 ) {
     init {
         require(mode.supports(battleMap, seed))
@@ -188,7 +189,8 @@ class GameSimulation(
 
     private fun createTower(type: TowerType, x: Double, y: Double, id: Long): Tower =
         Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks,
-            id, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD)
+            id, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD,
+            if (type == TowerType.RAIL) railModule else RailModule.STANDARD)
 
     fun upgradeTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to upgrade again")
@@ -270,7 +272,7 @@ class GameSimulation(
         return MissionCheckpoint(
             battleMap, difficulty, seed, fieldRank, tremorModule, useUpperRoute,
             tick, wave, gold, lives, kills, leakedEnemies, nextEnemyId, nextTowerId, eliteOffered,
-            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode,
+            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule,
         )
     }
 
@@ -369,12 +371,12 @@ class GameSimulation(
                 }
             ) return null
 
-            val game = GameSimulation(save.map, save.difficulty, save.seed, save.fieldRank, save.tremorModule, save.mode)
+            val game = GameSimulation(save.map, save.difficulty, save.seed, save.fieldRank, save.tremorModule, save.mode, save.railModule)
             if (game.tremorModule != save.tremorModule) return null
             var previousTowerId = 0L
             for (tower in save.towers) {
                 if (tower.id <= previousTowerId || tower.id >= save.nextTowerId || tower.level !in 1..Tower.MAX_LEVEL ||
-                    tower.nextAttackTick !in 0..(save.tick + tower.type.baseAttackIntervalTicks) ||
+                    tower.nextAttackTick !in 0..(save.tick + save.railModule.maxAttackInterval(tower.type)) ||
                     tower.cannonSpecialization != CannonSpecialization.STANDARD &&
                         (tower.type != TowerType.CANNON || tower.level != Tower.MAX_LEVEL) ||
                     !game.isUnlocked(tower.type) || game.placementError(tower.x, tower.y) != null

@@ -21,6 +21,7 @@ import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.CannonSpecialization
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.MissionMode
+import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.Waypoint
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
@@ -365,9 +366,42 @@ object DesktopSmokeTest {
                     check(simulation.towers.single().cannonSpecialization == CannonSpecialization.WIDE)
                     writeScreenshot("-quick-mission")
                 }
-                316 -> {
+                316 -> key(Input.Keys.M)
+                317 -> {
+                    click(685f, 220f) // Return from Quick to Campaign.
+                    click(332f, 184f)
+                }
+                318 -> {
+                    click(332f, 293f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.mode == MissionMode.CAMPAIGN && simulation.battleMap == BattleMap.CORRIDOR)
+                    repeat(simulation.totalWaves - 1) { finishNextWaveForFixture() }
+                    check(simulation.startWave().success)
+                    while (simulation.state == GameState.RUNNING) {
+                        simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
+                        simulation.update()
+                    }
+                    check(simulation.state == GameState.WON)
+                }
+                319 -> {
+                    check(Gdx.app.getPreferences(PROFILE_NAME).getBoolean("workshop.relay-hunter"))
+                    game.dispose()
+                    game = Main(PROFILE_NAME)
+                    createGame()
+                    key(Input.Keys.M)
+                }
+                320 -> {
+                    click(260f, 66f) // Equip the persisted Relay Hunter unlock.
+                    click(332f, 184f)
+                }
+                321 -> {
+                    check(simulation.railModule == RailModule.RELAY_HUNTER)
+                    key(Input.Keys.NUM_4)
+                    click(150f, 230f + DefenseScreen.BOARD_Y)
+                    val rail = simulation.towers.single()
+                    check(rail.railModule == RailModule.RELAY_HUNTER && rail.attackIntervalTicks == 143L)
                     screenshotWritten = true
-                    println("Desktop smoke passed: controls, rendering, mission and Remix settings, progression, mission report, checkpoint reload, optional elites, Quick mission, and Cannon specialization.")
+                    println("Desktop smoke passed: controls, rendering, mission and Remix settings, progression, mission report, checkpoint reload, optional elites, Quick mission, Cannon specialization, and the persistent Rail workshop unlock.")
                     Gdx.app.exit()
                 }
             }

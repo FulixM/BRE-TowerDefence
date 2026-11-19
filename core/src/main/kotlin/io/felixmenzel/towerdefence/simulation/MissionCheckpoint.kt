@@ -30,6 +30,7 @@ internal data class MissionCheckpoint(
     val echo: EchoCheckpoint,
     val reports: List<WaveReport>,
     val mode: MissionMode = MissionMode.CAMPAIGN,
+    val railModule: RailModule = RailModule.STANDARD,
 )
 
 internal data class TowerCheckpoint(
@@ -65,7 +66,7 @@ class MissionSaves(
 }
 
 private object MissionCheckpointCodec {
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val MAX_ENCODED_LENGTH = 1_000_000
     private const val MAX_TOWERS = 512
     private const val MAX_IMPACTS = 4096
@@ -137,6 +138,7 @@ private object MissionCheckpointCodec {
             writeBoolean(report.cleared)
         }
         writeUTF(checkpoint.mode.name)
+        writeUTF(checkpoint.railModule.name)
     }
 
     private fun DataInputStream.readCheckpoint(): MissionCheckpoint {
@@ -159,7 +161,7 @@ private object MissionCheckpointCodec {
         val eliteOffered = readFlag()
         val towers = boundedList(MAX_TOWERS) { readTower(version) }
         val armedTowerId = readLong().takeUnless { it == 0L }
-        val echo = EchoCheckpoint(armedTowerId, boundedList(MAX_IMPACTS) { readImpact() })
+        val echo = EchoCheckpoint(armedTowerId, boundedList(MAX_IMPACTS) { readImpact(version) })
         val reports = boundedList(GameSimulation.TOTAL_WAVES) {
             WaveReport(readInt(), readInt(), readInt(), readFlag(), readFlag())
         }
@@ -167,6 +169,7 @@ private object MissionCheckpointCodec {
             map, difficulty, seed, fieldRank, tremorModule, useUpperRoute, tick, wave, gold, lives,
             kills, leaked, nextEnemyId, nextTowerId, eliteOffered, towers, echo, reports,
             if (version == 1) MissionMode.CAMPAIGN else MissionMode.valueOf(readUTF()),
+            if (version < 3) RailModule.STANDARD else RailModule.valueOf(readUTF()),
         )
     }
 
@@ -204,9 +207,10 @@ private object MissionCheckpointCodec {
         }
         writeDouble(shot.areaRadius)
         writeUTF(shot.tremorModule.name)
+        writeUTF(shot.railModule.name)
     }
 
-    private fun DataInputStream.readImpact(): RecordedImpact {
+    private fun DataInputStream.readImpact(version: Int): RecordedImpact {
         val delay = readLong()
         val damage = readDouble()
         val fromX = readDouble()
@@ -218,7 +222,9 @@ private object MissionCheckpointCodec {
         val jumps = boundedList(2) { Waypoint(readDouble(), readDouble()) }
         val radius = readDouble()
         val module = TremorModule.valueOf(readUTF())
-        val shot = Shot(fromX, fromY, toX, toY, type, tick, emptyList(), jumps, radius, tremorModule = module)
+        val rail = if (version < 3) RailModule.STANDARD else RailModule.valueOf(readUTF())
+        val shot = Shot(fromX, fromY, toX, toY, type, tick, emptyList(), jumps, radius,
+            tremorModule = module, railModule = rail)
         return RecordedImpact(delay, damage, shot)
     }
 
@@ -246,7 +252,7 @@ private object MissionCheckpointCodec {
         if (towers.any { tower ->
                 tower.id !in 1 until nextTowerId || tower.level !in 1..Tower.MAX_LEVEL ||
                     tower.type.requiredRank > fieldRank || !onBoard(tower.x, tower.y, GameSimulation.BUILD_MARGIN) ||
-                    tower.nextAttackTick !in 0..tick + tower.type.baseAttackIntervalTicks ||
+                    tower.nextAttackTick !in 0..tick + railModule.maxAttackInterval(tower.type) ||
                     tower.cannonSpecialization != CannonSpecialization.STANDARD &&
                         (tower.type != TowerType.CANNON || tower.level != Tower.MAX_LEVEL)
             }

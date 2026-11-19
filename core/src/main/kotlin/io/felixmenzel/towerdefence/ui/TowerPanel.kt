@@ -5,9 +5,9 @@ import io.felixmenzel.towerdefence.simulation.ActionResult
 import io.felixmenzel.towerdefence.simulation.CannonSpecialization
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
+import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
-import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.ui.HudPalette.CYAN
 import io.felixmenzel.towerdefence.ui.HudPalette.ECHO
 import io.felixmenzel.towerdefence.ui.HudPalette.GOLD
@@ -42,7 +42,7 @@ internal fun HudCanvas.drawTowerPanel(
     }
 
     when {
-        buildType != null -> buildPanel(buildType, simulation.tremorModule, cancelPlacement)
+        buildType != null -> buildPanel(buildType, simulation, cancelPlacement)
         tower != null -> selectedPanel(tower, simulation, report, sell)
         else -> {
             text("YOUR DEFENCE", 922f, 313f, 0.95f, WHITE)
@@ -64,13 +64,19 @@ private fun HudCanvas.towerCard(
     text(info, x + 12f, y + 13f, 0.70f, if (unlocked && gold >= type.cost) GOLD else MUTED)
 }
 
-private fun HudCanvas.buildPanel(type: TowerType, module: TremorModule, cancelPlacement: () -> Unit) {
+private fun HudCanvas.buildPanel(type: TowerType, simulation: GameSimulation, cancelPlacement: () -> Unit) {
     text("PLACING / ${type.title.uppercase()}", 922f, 313f, 0.95f, towerColor(type))
     text("Cost ${type.cost}  /  Range ${type.baseRange.roundToInt()}", 922f, 285f, 0.9f, WHITE)
-    text("${type.baseDamage.roundToInt()} damage / ${formatRate(type.baseAttackIntervalTicks)} shots per sec", 922f, 262f, 0.86f, MUTED)
-    val description = if (type == TowerType.TREMOR) {
-        "${module.title} / ${module.radius.toInt()} radius / ${module.slowPercent}% slow"
-    } else type.description
+    val interval = simulation.railModule.maxAttackInterval(type)
+    text("${type.baseDamage.roundToInt()} damage / ${formatRate(interval)} shots per sec", 922f, 262f, 0.86f, MUTED)
+    val description = when {
+        type == TowerType.TREMOR -> with(simulation.tremorModule) {
+            "$title / ${radius.toInt()} radius / $slowPercent% slow"
+        }
+        type == TowerType.RAIL && simulation.railModule == RailModule.RELAY_HUNTER ->
+            "Relay Hunter: 2x shield damage, +25% against relays."
+        else -> type.description
+    }
     text(description, 922f, 230f, 0.88f, WHITE, 250f)
     text("Click clear ground to build.", 922f, 175f, 0.80f, MUTED, 250f)
     button("Cancel placement [Esc]", 922f, 116f, 254f, 40f) { cancelPlacement() }
@@ -80,6 +86,7 @@ private fun HudCanvas.selectedPanel(
     tower: Tower, simulation: GameSimulation, report: (ActionResult) -> Unit, sell: (Tower) -> Unit,
 ) {
     val module = when {
+        tower.railModule == RailModule.RELAY_HUNTER -> " / HUNTER"
         tower.type == TowerType.TREMOR -> " / ${tower.tremorModule.title.uppercase()}"
         tower.cannonSpecialization != CannonSpecialization.STANDARD -> " / ${tower.cannonSpecialization.title.uppercase()}"
         else -> ""

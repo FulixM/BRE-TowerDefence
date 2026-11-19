@@ -87,7 +87,7 @@ internal class WaveEcho {
                         .filter { it.canBeHit && it.id !in this && distanceSquared(it, impact.x, impact.y) <= POINT_RADIUS * POINT_RADIUS }
                         .minWithOrNull(compareBy({ distanceSquared(it, impact.x, impact.y) }, { it.id }))
                         ?: continue
-                    applyTowerHit(shot.type, target, damage * DAMAGE_FACTOR, index)
+                    applyTowerHit(shot.type, target, damage * DAMAGE_FACTOR, index, railModule = shot.railModule)
                     add(target.id)
                 }
             }
