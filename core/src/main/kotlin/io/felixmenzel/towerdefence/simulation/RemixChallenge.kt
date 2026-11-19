@@ -2,12 +2,12 @@ package io.felixmenzel.towerdefence.simulation
 
 import java.util.Locale
 
-data class RemixChallenge(val map: BattleMap, val difficulty: Difficulty, val seed: Int) {
+data class RemixChallenge(val map: BattleMap, val difficulty: Difficulty, val seed: Int, val elevatedTerrain: Boolean = true) {
     init {
         require(seed in SEED_RANGE)
     }
 
-    val code: String get() = "BRE1-${map.code}-${difficulty.code}-$seed"
+    val code: String get() = "BRE${if (elevatedTerrain) 2 else 1}-${map.code}-${difficulty.code}-$seed"
 
     companion object {
         val SEED_RANGE = 100000..999999
@@ -16,11 +16,11 @@ data class RemixChallenge(val map: BattleMap, val difficulty: Difficulty, val se
             val normalized = code.trim()
             if (normalized.length != 15) return null
             val parts = normalized.uppercase(Locale.ROOT).split('-')
-            if (parts.size != 4 || parts[0] != "BRE1" || parts[3].length != 6) return null
+            if (parts.size != 4 || parts[0] !in setOf("BRE1", "BRE2") || parts[3].length != 6) return null
             val map = BattleMap.entries.firstOrNull { it.code == parts[1] } ?: return null
             val difficulty = Difficulty.entries.firstOrNull { it.code == parts[2] } ?: return null
             val seed = parts[3].toIntOrNull()?.takeIf { it in SEED_RANGE } ?: return null
-            return RemixChallenge(map, difficulty, seed)
+            return RemixChallenge(map, difficulty, seed, parts[0] == "BRE2")
         }
     }
 }

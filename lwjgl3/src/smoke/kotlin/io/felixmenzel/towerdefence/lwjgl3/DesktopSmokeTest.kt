@@ -130,10 +130,11 @@ object DesktopSmokeTest {
                     key(Input.Keys.NUM_1)
                 }
                 2 -> {
-                    click(220f, 240f + DefenseScreen.BOARD_Y)
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 1) { "Valid mouse placement did not build" }
                     check(simulation.gold == GameSimulation.START_GOLD - TowerType.RAPID.cost)
                     val tower = simulation.towers.single()
+                    check(tower.height == 2) { "Classic preview position is not on the summit" }
                     check(tower.targetPriority == TargetPriority.FIRST)
                     key(Input.Keys.T)
                     check(tower.targetPriority == TargetPriority.STRONGEST) { "Target shortcut did not change selected tower" }
@@ -143,6 +144,7 @@ object DesktopSmokeTest {
                     check(tower.targetPriority == TargetPriority.FIRST)
                 }
                 3 -> {
+                    writeScreenshot("-high-ground")
                     val tower = simulation.towers.single()
                     val cost = checkNotNull(tower.upgradeCost)
                     val before = simulation.gold
@@ -182,7 +184,7 @@ object DesktopSmokeTest {
                     key(Input.Keys.ENTER)
                     checkFreshMission()
                     key(Input.Keys.NUM_1)
-                    click(220f, 240f + DefenseScreen.BOARD_Y)
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
                     key(Input.Keys.NUM_2)
                     click(450f, 250f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 2)
@@ -528,10 +530,10 @@ object DesktopSmokeTest {
                     remixSeed = privateField<Int>(screen, "pendingSeed")
                     check(remixSeed != before)
                     click(380f, 139f)
-                    check(Gdx.app.clipboard.contents == "BRE1-T-N-$remixSeed")
+                    check(Gdx.app.clipboard.contents == "BRE2-T-N-$remixSeed")
                     click(332f, 184f)
                     simulation = privateField(screen, "simulation")
-                    check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed)
+                    check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed && simulation.elevatedTerrain)
                 }
                 15 -> {
                     key(Input.Keys.NUM_0)

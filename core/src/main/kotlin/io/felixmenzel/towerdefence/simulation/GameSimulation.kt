@@ -12,12 +12,15 @@ class GameSimulation(
     val mode: MissionMode = MissionMode.CAMPAIGN,
     val railModule: RailModule = RailModule.STANDARD,
     research: ResearchLoadout = ResearchLoadout.EMPTY,
+    val elevatedTerrain: Boolean = mode == MissionMode.CAMPAIGN,
 ) {
     init {
-        require(mode.supports(battleMap, seed))
+        require(mode.supports(battleMap, seed) && (!elevatedTerrain || mode == MissionMode.CAMPAIGN))
     }
 
     val research = if (ResearchLoadout.appliesTo(mode, seed)) research else ResearchLoadout.EMPTY
+    val terrain = if (elevatedTerrain) BattleTerrain.forMap(battleMap, seed) else BattleTerrain.FLAT
+    fun baseRange(type: TowerType): Double = terrain.baseRange(research.rangeFor(type))
     val startingGold = mode.startingGold(difficulty) + this.research.startingGoldBonus
     val tremorModule = if (fieldRank >= TremorModule.REQUIRED_RANK) tremorModule else TremorModule.STANDARD
     var useUpperRoute = false
@@ -25,7 +28,7 @@ class GameSimulation(
     val path: List<Waypoint> get() = if (useUpperRoute) checkNotNull(battleMap.alternatePath) else battleMap.path
     val inactivePath: List<Waypoint>? get() = if (useUpperRoute) battleMap.path else battleMap.alternatePath
     val challenge: RemixChallenge? = seed?.takeIf { it in RemixChallenge.SEED_RANGE }?.let {
-        RemixChallenge(battleMap, difficulty, it)
+        RemixChallenge(battleMap, difficulty, it, elevatedTerrain)
     }
     private val mutableEnemies = mutableListOf<Enemy>()
     private val mutableTowers = mutableListOf<Tower>()
@@ -89,7 +92,7 @@ class GameSimulation(
     private var nextTowerId = 1L
     private var spawnedThisWave = 0
     private var nextSpawnTick = 0L
-    internal val echo = WaveEcho()
+    internal val echo = WaveEcho(terrain)
 
     fun update() {
         tick++
@@ -190,9 +193,9 @@ class GameSimulation(
     }
 
     private fun createTower(type: TowerType, x: Double, y: Double, id: Long): Tower =
-        Tower(x, y, research.rangeFor(type), research.damageFor(type), type.baseAttackIntervalTicks,
+        Tower(x, y, baseRange(type), research.damageFor(type), type.baseAttackIntervalTicks,
             id, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD,
-            if (type == TowerType.RAIL) railModule else RailModule.STANDARD, research.reloadFactor)
+            if (type == TowerType.RAIL) railModule else RailModule.STANDARD, research.reloadFactor, terrain)
 
     fun upgradeTower(id: Long): ActionResult {
         if (!canManageTowers()) return ActionResult(false, "Restart to upgrade again")
@@ -274,7 +277,7 @@ class GameSimulation(
         return MissionCheckpoint(
             battleMap, difficulty, seed, fieldRank, tremorModule, useUpperRoute,
             tick, wave, gold, lives, kills, leakedEnemies, nextEnemyId, nextTowerId, eliteOffered,
-            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule, research,
+            mutableTowers.map(Tower::checkpoint), echo.checkpoint(), waveReports.toList(), mode, railModule, research, elevatedTerrain,
         )
     }
 
@@ -357,7 +360,7 @@ class GameSimulation(
             25 + wave * 5 + if (elite) ELITE_REWARD else 0
 
         internal fun restore(save: MissionCheckpoint): GameSimulation? {
-            if (!save.mode.supports(save.map, save.seed) || save.wave !in 0 until save.mode.waveCount || save.tick !in 0..Long.MAX_VALUE / 2 ||
+            if (!save.mode.supports(save.map, save.seed) || save.elevatedTerrain && save.mode != MissionMode.CAMPAIGN || save.wave !in 0 until save.mode.waveCount || save.tick !in 0..Long.MAX_VALUE / 2 ||
                 save.gold < 0 || save.lives !in 1..save.difficulty.startingLives ||
                 save.leaked != save.difficulty.startingLives - save.lives || save.kills < 0 || save.fieldRank < 1 ||
                 save.useUpperRoute && save.map.alternatePath == null || save.eliteOffered && (save.mode != MissionMode.CAMPAIGN || save.wave + 1 != ELITE_WAVE)
@@ -374,7 +377,7 @@ class GameSimulation(
             ) return null
 
             val game = GameSimulation(save.map, save.difficulty, save.seed, save.fieldRank, save.tremorModule, save.mode,
-                save.railModule, save.research)
+                save.railModule, save.research, save.elevatedTerrain)
             if (game.tremorModule != save.tremorModule || game.research != save.research) return null
             var previousTowerId = 0L
             for (tower in save.towers) {

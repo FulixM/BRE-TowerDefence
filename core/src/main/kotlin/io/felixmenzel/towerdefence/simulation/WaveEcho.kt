@@ -1,7 +1,7 @@
 package io.felixmenzel.towerdefence.simulation
 
 /** One recording per wave. Recorded impacts belong to the following wave only. */
-internal class WaveEcho {
+internal class WaveEcho(private val terrain: BattleTerrain = BattleTerrain.FLAT) {
     var armedTowerId: Long? = null
         private set
     var recordingTowerId: Long? = null
@@ -96,8 +96,12 @@ internal class WaveEcho {
     }
 
     private fun RecordedImpact.hitArea(enemies: List<Enemy>, x: Double, y: Double, radius: Double): List<Long> = buildList {
+        val height = terrain.heightAt(x, y)
         for (enemy in enemies) {
-            if (enemy.canBeHit && distanceSquared(enemy, x, y) <= radius * radius) {
+            if (!enemy.canBeHit) continue
+            val inRange = if (shot.type == TowerType.INFERNO) terrain.canReach(x, y, height, radius, enemy.x, enemy.y)
+                else distanceSquared(enemy, x, y) <= radius * radius
+            if (inRange) {
                 applyTowerHit(shot.type, enemy, damage * DAMAGE_FACTOR, tremorModule = shot.tremorModule)
                 add(enemy.id)
             }

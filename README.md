@@ -22,7 +22,7 @@ Use **Mission** to choose a route and difficulty. The mission screen previews th
 
 **Twin Locks** adds two tight turns in the middle of the route. The **Tremor** tower (`0`) slows groups around an impact and unlocks at field rank 2. Finished missions award profile XP for cleared waves, plus a victory bonus. The profile saves locally and carries over between missions.
 
-Choose **Remix** in mission setup to vary enemy order and spawn spacing. Reroll for a new seed, or retry a mission to keep its seed and timings. **Copy code** shares the map, difficulty and seed. **Paste Remix code** loads those settings from the clipboard. The mission setup shows the local best for that code by waves cleared, then lives and kills.
+Choose **Remix** in mission setup to vary enemy order, spawn spacing and the position and size of the hills. Reroll for a new seed, or retry a mission to keep its seed and timings. **Copy code** shares the map, difficulty and seed. **Paste Remix code** loads those settings from the clipboard. The mission setup shows the local best for that code by waves cleared, then lives and kills. New Remix codes start with `BRE2`. Older `BRE1` codes keep their flat maps and existing records.
 
 On **Twin Locks**, press **V** between waves to switch paths. Both routes remain reserved for enemies, and purple markers show the first recorded echo impact positions. At field rank 3, choose a **Tremor** module in mission setup. Wide covers a larger area with a weaker slow. Focused covers a smaller area with a stronger slow. The chosen module applies to the whole mission, including recorded echoes.
 
@@ -37,6 +37,12 @@ Winning The Corridor campaign unlocks **Relay Hunter** permanently in your local
 Commanders in waves 17 and 19 cut damage to their two nearby escorts in half. A green link marks the protection. It breaks if the commander falls or moves too far away.
 
 Open **Mission Setup → Workshop** to turn Classic campaign milestones into permanent research. Spend points on tower damage, reload, targeting range or starting gold. Higher difficulties also record mastery on easier ones. [Progression rules](docs/progression.md)
+
+In Classic and new Remix missions, build on a terrace or summit to shoot farther downhill.
+Base tower range is 6% shorter. Direct shots gain 10% per level downhill or lose 10% per level uphill.
+Impact splash and chain jump distances stay fixed. Range previews mark reachable points along the active route.
+Classic maps have fixed hill layouts. Remix uses the seed for hill layout while keeping the map's routes.
+Quick missions and missions resumed from older saves retain their original terrain and range.
 
 Choose **Quick mission / 6 waves** in Mission Setup for a fixed 330-gold start and mixed squads on The Corridor. Quick missions have separate local bests for each difficulty.
 
