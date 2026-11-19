@@ -84,6 +84,23 @@ class BalanceSimulationTest {
     }
 
     @Test
+    fun `the upper lock can carry a full classic mission using its own placements`() {
+        val game = GameSimulation(BattleMap.TWIN_LOCKS)
+        assertTrue(game.switchRoute().success)
+        val upperPlan = twinLocksPlan.toMutableList()
+        upperPlan[1] = Placement(TowerType.RAPID, 275.0, 365.0)
+        upperPlan[2] = Placement(TowerType.CANNON, 330.0, 395.0)
+        upperPlan[3] = Placement(TowerType.FROST, 482.0, 375.0)
+        upperPlan[5] = Placement(TowerType.ARC, 490.0, 493.0)
+
+        playCampaign(game) { fortifyUsing(it, upperPlan) }
+
+        assertEquals(GameState.WON, game.state)
+        assertTrue(game.useUpperRoute)
+        assertTrue(game.lives > 0)
+    }
+
+    @Test
     fun `an undefended base loses on every mission option`() {
         for (battleMap in BattleMap.entries) {
             for (difficulty in Difficulty.entries) {

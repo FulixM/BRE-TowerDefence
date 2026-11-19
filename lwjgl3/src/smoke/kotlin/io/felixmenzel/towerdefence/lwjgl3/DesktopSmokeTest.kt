@@ -25,6 +25,7 @@ import io.felixmenzel.towerdefence.simulation.Difficulty
 import io.felixmenzel.towerdefence.simulation.TargetPriority
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.TowerType
+import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.ui.DefenseScreen
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -61,6 +62,7 @@ object DesktopSmokeTest {
         private var missionSetupStage = 0
         private var missionSetupFrames = 0
         private var remixSeed: Int? = null
+        private var previousClipboard: String? = null
         private var frozenTick = 0L
         private var expectedRefund = 0
         private var screenshotWritten = false
@@ -68,8 +70,10 @@ object DesktopSmokeTest {
         private var normalNativeCapHeight = 0f
 
         override fun create() {
-            Gdx.app.getPreferences(PROFILE_NAME).clear()
-            Gdx.app.getPreferences(PROFILE_NAME).flush()
+            val preferences = Gdx.app.getPreferences(PROFILE_NAME)
+            preferences.clear()
+            preferences.putInteger("xp", 80).flush()
+            previousClipboard = Gdx.app.clipboard.contents
             game.create()
             screen = game.getScreen<DefenseScreen>()
             simulation = privateField(screen, "simulation")
@@ -254,22 +258,43 @@ object DesktopSmokeTest {
                     check(simulation.enemies.isNotEmpty())
                     writeScreenshot()
                     checkEnemyDefenses()
-                    finishProfileMission()
+                    key(Input.Keys.M)
+                }
+                301 -> {
+                    Gdx.app.clipboard.contents = "BRE1-C-N-583471"
+                    click(250f, 140f) // Paste a Remix code before replacing the active defence.
+                    click(332f, 184f)
                 }
                 302 -> {
-                    check(Gdx.app.getPreferences(PROFILE_NAME).getInteger("xp") == 120) {
-                        "A lost mission did not persist XP exactly once"
-                    }
+                    click(332f, 293f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.seed == 583471)
+                    finishProfileMission()
+                }
+                304 -> {
+                    val preferences = Gdx.app.getPreferences(PROFILE_NAME)
+                    check(preferences.getInteger("xp") == 200) { "A lost mission did not persist XP exactly once" }
+                    check(preferences.getString("remix.BRE1-C-N-583471") == "6,0,60") { "Remix best was not saved" }
                     key(Input.Keys.ENTER)
                 }
-                303 -> {
-                    check(simulation.fieldRank == 2)
+                305 -> {
+                    check(simulation.fieldRank == 3 && simulation.seed == 583471)
+                    key(Input.Keys.M)
+                }
+                306 -> {
+                    click(260f, 104f) // Standard -> Wide.
+                    click(260f, 104f) // Wide -> Focused.
+                    click(332f, 184f)
+                }
+                307 -> {
+                    check(simulation.tremorModule == TremorModule.FOCUSED)
                     key(Input.Keys.NUM_0)
                     check(privateField<TowerType>(screen, "buildType") == TowerType.TREMOR)
                     click(150f, 220f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.single().type == TowerType.TREMOR)
+                    check(simulation.towers.single().tremorModule == TremorModule.FOCUSED)
                     screenshotWritten = true
-                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, enemy defenses, Remix, and field rank; screenshots saved.")
+                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, enemy defenses, Remix codes and bests, field rank, Tremor modules, and Twin Locks route; screenshots saved.")
                     Gdx.app.exit()
                 }
             }
@@ -368,6 +393,8 @@ object DesktopSmokeTest {
                     click(452f, 221f) // Reroll.
                     remixSeed = privateField<Int>(screen, "pendingSeed")
                     check(remixSeed != before)
+                    click(380f, 139f)
+                    check(Gdx.app.clipboard.contents == "BRE1-T-N-$remixSeed")
                     click(332f, 184f)
                     simulation = privateField(screen, "simulation")
                     check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed)
@@ -375,12 +402,14 @@ object DesktopSmokeTest {
                 15 -> {
                     key(Input.Keys.NUM_0)
                     check(privateField<TowerType?>(screen, "buildType") == null)
+                    key(Input.Keys.V)
+                    check(simulation.useUpperRoute)
                     writeScreenshot("-twin-locks")
                     key(Input.Keys.R)
                 }
                 16 -> {
                     key(Input.Keys.ENTER)
-                    check(simulation.seed == remixSeed)
+                    check(simulation.seed == remixSeed && !simulation.useUpperRoute)
                     key(Input.Keys.M)
                 }
                 17 -> {
@@ -502,6 +531,7 @@ object DesktopSmokeTest {
 
         override fun dispose() {
             game.dispose()
+            Gdx.app.clipboard.contents = previousClipboard.orEmpty()
             Gdx.app.getPreferences(PROFILE_NAME).clear()
             Gdx.app.getPreferences(PROFILE_NAME).flush()
             check(screenshotWritten) { "Smoke application closed before completing all checks" }

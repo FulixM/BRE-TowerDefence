@@ -24,6 +24,7 @@ import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
+import io.felixmenzel.towerdefence.simulation.Waypoint
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.acos
@@ -127,6 +128,15 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             ring(shot.fromX.toFloat(), shot.fromY.toFloat(), 30f, 1.5f, ECHO, 0.7f)
             ring(shot.toX.toFloat(), shot.toY.toFloat(), 8f, 1.5f, ECHO, 0.65f)
         }
+        if (simulation.state == GameState.PREPARING && simulation.inactivePath != null) {
+            for (shot in simulation.echo.recordedImpacts()) {
+                val x = if (shot.type == TowerType.INFERNO) shot.fromX else shot.toX
+                val y = if (shot.type == TowerType.INFERNO) shot.fromY else shot.toY
+                shapes.color = ECHO
+                diamond(x.toFloat(), y.toFloat(), 3f)
+                for (jump in shot.arcJumps) diamond(jump.x.toFloat(), jump.y.toFloat(), 3f)
+            }
+        }
         val recordedTowerId = simulation.echo.recordingTowerId ?: simulation.echo.armedTowerId
         simulation.towers.firstOrNull { it.id == recordedTowerId }?.let { tower ->
             ring(tower.x.toFloat(), tower.y.toFloat(), 33f, 2f, ECHO)
@@ -159,10 +169,13 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             }
         }
         if (simulation.battleMap == BattleMap.SWITCHBACK) drawRelayTrim()
-        // Both maps use the same lane width: the artwork never suggests different placement rules.
-        drawPath(simulation, 48f, palette.laneEdge)
-        drawPath(simulation, 42f, palette.lane)
-        drawPath(simulation, 26f, palette.laneCenter)
+        simulation.inactivePath?.let { alternate ->
+            drawPath(alternate, 48f, palette.majorGrid)
+            drawPath(alternate, 42f, palette.grid)
+        }
+        drawPath(simulation.path, 48f, palette.laneEdge)
+        drawPath(simulation.path, 42f, palette.lane)
+        drawPath(simulation.path, 26f, palette.laneCenter)
         shapes.color = palette.laneMark
         val path = simulation.path
         for (index in 0 until path.lastIndex) {
@@ -212,12 +225,12 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         shapes.rectLine(874f, 504f, 874f, 535f, 1f)
     }
 
-    private fun drawPath(simulation: GameSimulation, width: Float, color: Color) {
+    private fun drawPath(path: List<Waypoint>, width: Float, color: Color) {
         shapes.color = color
-        simulation.path.forEach { circle(it.x.toFloat(), it.y.toFloat(), width / 2f) }
-        for (index in 0 until simulation.path.lastIndex) {
-            val start = simulation.path[index]
-            val end = simulation.path[index + 1]
+        path.forEach { circle(it.x.toFloat(), it.y.toFloat(), width / 2f) }
+        for (index in 0 until path.lastIndex) {
+            val start = path[index]
+            val end = path[index + 1]
             shapes.rectLine(start.x.toFloat(), start.y.toFloat(), end.x.toFloat(), end.y.toFloat(), width)
         }
     }
@@ -560,7 +573,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 TowerType.RAIL -> 4f + age * 13f
                 TowerType.BEACON -> 8f + age * 10f
                 TowerType.SUNDER -> 6f + age * 13f
-                TowerType.TREMOR -> 6f + age * (Tower.TREMOR_RADIUS.toFloat() - 6f)
+                TowerType.TREMOR -> 6f + age * (shot.areaRadius.toFloat() - 6f)
                 else -> 3f + age * 9f
             }
             ring(toX, toY, radius, 2f * opacity + 0.5f, color, opacity)
