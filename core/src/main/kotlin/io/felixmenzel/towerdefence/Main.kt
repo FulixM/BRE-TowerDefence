@@ -40,6 +40,8 @@ class Main(private val profileName: String = "bre-tower-defence-profile") : KtxG
         }
 
         addScreen(DefenseScreen(profile, records, saves,
+            sfxEnabled = preferences.getBoolean("audio.sfx", true),
+            persistSfx = { enabled -> persistChanges { preferences.putBoolean("audio.sfx", enabled) } },
             persistResearch = { research ->
                 persistChanges { preferences.putString(RESEARCH_KEY, research.encode()) }
             },

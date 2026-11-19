@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera
 import com.badlogic.gdx.math.Matrix4
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.utils.viewport.FitViewport
+import io.felixmenzel.towerdefence.audio.CombatAudio
 import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.simulation.ActionResult
@@ -49,6 +50,8 @@ class DefenseScreen(
     private val saves: MissionSaves = MissionSaves(),
     private val persistResearch: (ResearchProgress) -> Unit = {},
     private val persistResult: ((Int, Pair<String, String>?, Boolean, ResearchProgress) -> Unit)? = null,
+    sfxEnabled: Boolean = true,
+    private val persistSfx: (Boolean) -> Unit = {},
 ) : KtxScreen {
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(WIDTH, HEIGHT, camera)
@@ -67,7 +70,17 @@ class DefenseScreen(
     private var newRemixBest = false
     private var newRelayHunter = false
     private var gainedResearch = 0
-    private val loop = FixedStepLoop { simulation.update() }
+    private val combatAudio = CombatAudio(sfxEnabled)
+    private val onEnemyEvent = combatAudio::enemy
+    private val loop = FixedStepLoop {
+        simulation.update(onEnemyEvent)
+        val shots = simulation.shots
+        for (index in shots.lastIndex downTo 0) {
+            val shot = shots[index]
+            if (shot.tick != simulation.tick) break
+            combatAudio.shot(shot)
+        }
+    }
     private var selectedTowerId: Long? = null
     private var buildType: TowerType? = null
     private var paused = false
@@ -116,6 +129,10 @@ class DefenseScreen(
         override fun keyDown(keycode: Int): Boolean {
             if (keycode == Input.Keys.SHIFT_LEFT || keycode == Input.Keys.SHIFT_RIGHT) {
                 shiftKeys.add(keycode)
+                return true
+            }
+            if (keycode == Input.Keys.F8) {
+                toggleSfx()
                 return true
             }
             if (startupMission != null) {
@@ -296,6 +313,7 @@ class DefenseScreen(
     }
 
     override fun hide() {
+        combatAudio.stop()
         shiftKeys.clear()
         saveCheckpoint()
         if (Gdx.input.inputProcessor === input) Gdx.input.inputProcessor = null
@@ -303,6 +321,7 @@ class DefenseScreen(
 
     override fun render(delta: Float) {
         messageTime = (messageTime - delta).coerceAtLeast(0f)
+        combatAudio.beginFrame(delta)
         val previousState = simulation.state
         if (!isModal()) {
             // Advancing separately preserves the loop's long-frame guard at both speeds.
@@ -549,12 +568,23 @@ class DefenseScreen(
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
 
+    private fun toggleSfx() {
+        combatAudio.enabled = !combatAudio.enabled
+        try {
+            persistSfx(combatAudio.enabled)
+        } catch (failure: RuntimeException) {
+            Gdx.app.error("CombatAudio", "Could not save sound preference", failure)
+        }
+    }
+
     private fun togglePause() {
         paused = !paused
+        if (paused) combatAudio.stop()
         loop.reset()
     }
 
     override fun pause() {
+        combatAudio.stop()
         shiftKeys.clear()
         saveCheckpoint()
         if (!isFinished() && startupMission == null) paused = true
@@ -592,6 +622,8 @@ class DefenseScreen(
         stat("GOLD", simulation.gold.toString(), 386f, GOLD)
         stat("BASE", "${simulation.lives} / ${simulation.difficulty.startingLives}", 523f, if (simulation.lives <= 5) RED else CYAN)
         stat("WAVE", "${simulation.wave} / ${simulation.totalWaves}", 678f, WHITE)
+        button(if (combatAudio.enabled) "SFX on" else "SFX off", 758f, 660f, 66f, 40f,
+            scale = 0.70f, action = ::toggleSfx)
         button(if (doubleSpeed) "2x [F]" else "1x [F]", 835f, 660f, 90f, 40f) { doubleSpeed = !doubleSpeed }
         button("Pause [P]", 938f, 660f, 112f, 40f) { togglePause() }
         button("Restart [R]", 1063f, 660f, 113f, 40f) { restartConfirmation = true }
@@ -864,6 +896,7 @@ class DefenseScreen(
 
     override fun dispose() {
         hide()
+        combatAudio.dispose()
         renderer.dispose()
         hud.dispose()
         fonts.dispose()
