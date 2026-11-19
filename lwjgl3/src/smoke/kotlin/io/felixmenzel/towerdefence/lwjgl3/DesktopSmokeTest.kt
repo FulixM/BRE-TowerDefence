@@ -53,7 +53,7 @@ object DesktopSmokeTest {
     private const val PROFILE_NAME = "bre-tower-defence-smoke"
 
     private class SmokeApplication : ApplicationAdapter() {
-        private val game = Main(PROFILE_NAME)
+        private var game = Main(PROFILE_NAME)
         private lateinit var screen: DefenseScreen
         private lateinit var simulation: GameSimulation
         private lateinit var viewport: FitViewport
@@ -65,6 +65,7 @@ object DesktopSmokeTest {
         private var previousClipboard: String? = null
         private var frozenTick = 0L
         private var expectedRefund = 0
+        private var checkpointGold = 0
         private var screenshotWritten = false
         private var normalCapHeight = 0f
         private var normalNativeCapHeight = 0f
@@ -74,11 +75,16 @@ object DesktopSmokeTest {
             preferences.clear()
             preferences.putInteger("xp", 80).flush()
             previousClipboard = Gdx.app.clipboard.contents
+            createGame()
+            ready = true
+        }
+
+        private fun createGame() {
             game.create()
+            game.resize(Gdx.graphics.width, Gdx.graphics.height)
             screen = game.getScreen<DefenseScreen>()
             simulation = privateField(screen, "simulation")
             viewport = privateField(screen, "viewport")
-            ready = true
         }
 
         override fun resize(width: Int, height: Int) {
@@ -275,26 +281,70 @@ object DesktopSmokeTest {
                     val preferences = Gdx.app.getPreferences(PROFILE_NAME)
                     check(preferences.getInteger("xp") == 200) { "A lost mission did not persist XP exactly once" }
                     check(preferences.getString("remix.BRE1-C-N-583471") == "6,0,60") { "Remix best was not saved" }
-                    key(Input.Keys.ENTER)
+                    check(simulation.waveReports.count { it.cleared } == 6)
+                    check(!simulation.waveReports.last().cleared && simulation.waveReports.last().leaked > 0)
+                    click(652f, 236f) // Open the debrief from the result screen.
+                    check(privateField<Boolean>(screen, "reportOpen"))
                 }
                 305 -> {
+                    writeScreenshot("-mission-report")
+                    click(500f, 151f)
+                    check(!privateField<Boolean>(screen, "reportOpen"))
+                    check(simulation.state == GameState.LOST)
+                    key(Input.Keys.ENTER)
+                }
+                306 -> {
                     check(simulation.fieldRank == 3 && simulation.seed == 583471)
                     key(Input.Keys.M)
                 }
-                306 -> {
+                307 -> {
                     click(260f, 104f) // Standard -> Wide.
                     click(260f, 104f) // Wide -> Focused.
                     click(332f, 184f)
                 }
-                307 -> {
+                308 -> {
                     check(simulation.tremorModule == TremorModule.FOCUSED)
                     key(Input.Keys.NUM_0)
                     check(privateField<TowerType>(screen, "buildType") == TowerType.TREMOR)
                     click(150f, 220f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.single().type == TowerType.TREMOR)
                     check(simulation.towers.single().tremorModule == TremorModule.FOCUSED)
+                    finishNextWaveForFixture()
+                    key(Input.Keys.U)
+                    key(Input.Keys.T)
+                    checkpointGold = simulation.gold
+                }
+                309 -> {
+                    game.dispose()
+                    game = Main(PROFILE_NAME)
+                    createGame()
+                    checkNotNull(privateField<GameSimulation?>(screen, "startupMission")) {
+                        "Relaunch did not load the local mission checkpoint"
+                    }
+                }
+                310 -> {
+                    click(332f, 293f) // Continue the saved mission on startup.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.state == GameState.PREPARING && simulation.seed == 583471)
+                    check(simulation.wave == 1 && simulation.waveReports.single().cleared)
+                    check(simulation.gold == checkpointGold)
+                    val tower = simulation.towers.single()
+                    check(tower.type == TowerType.TREMOR && tower.tremorModule == TremorModule.FOCUSED)
+                    check(tower.level == 2 && tower.targetPriority == TargetPriority.STRONGEST)
+                    check(privateField<GameSimulation?>(screen, "startupMission") == null)
+                    advanceToEliteOffer()
+                }
+                311 -> {
+                    click(815f, 606f) // Accept the optional elite wave through the HUD.
+                    check(simulation.eliteOffered)
+                    key(Input.Keys.SPACE)
+                    check(simulation.state == GameState.RUNNING && simulation.wave == GameSimulation.ELITE_WAVE)
+                    simulation.update()
+                    check(simulation.enemies.single().isElite)
+                }
+                312 -> {
                     screenshotWritten = true
-                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, enemy defenses, Remix codes and bests, field rank, Tremor modules, and Twin Locks route; screenshots saved.")
+                    println("Desktop smoke passed: controls, rendering, mission and Remix settings, progression, mission report, checkpoint reload, and optional elites.")
                     Gdx.app.exit()
                 }
             }
@@ -445,16 +495,15 @@ object DesktopSmokeTest {
             check(simulation.towers.isEmpty() && simulation.enemies.isEmpty() && simulation.shots.isEmpty())
         }
 
+        private fun advanceToEliteOffer() {
+            while (simulation.wave < GameSimulation.ELITE_WAVE - 1) finishNextWaveForFixture()
+            check(simulation.canOfferElite)
+        }
+
         private fun finishProfileMission() {
             simulation.restart()
             // Isolate profile rewards from the balance of a particular build.
-            repeat(5) {
-                check(simulation.startWave().success)
-                while (simulation.state == GameState.RUNNING) {
-                    simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
-                    simulation.update()
-                }
-            }
+            repeat(5) { finishNextWaveForFixture() }
             while (simulation.state != GameState.LOST) {
                 check(simulation.startWave().success)
                 while (simulation.state == GameState.RUNNING) simulation.update()
@@ -462,12 +511,21 @@ object DesktopSmokeTest {
             check(simulation.wave == 7)
         }
 
+        private fun finishNextWaveForFixture() {
+            check(simulation.startWave().success)
+            while (simulation.state == GameState.RUNNING) {
+                simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
+                simulation.update()
+            }
+            check(simulation.state == GameState.PREPARING)
+        }
+
         private fun checkEnemyDefenses() {
             val fixture = GameSimulation()
             val enemies = privateField<MutableList<Enemy>>(fixture, "mutableEnemies")
-            fun addEnemy(x: Double, type: EnemyType): Enemy {
+            fun addEnemy(x: Double, type: EnemyType, elite: Boolean = false): Enemy {
                 val route = listOf(Waypoint(x, 280.0), Waypoint(x + 100.0, 280.0))
-                return Enemy(enemies.size + 1L, route, 0.0, 100.0, type).also(enemies::add)
+                return Enemy(enemies.size + 1L, route, 0.0, 100.0, type, isElite = elite).also(enemies::add)
             }
 
             addEnemy(160.0, EnemyType.SHIELDED).takeDamage(15.0)
@@ -477,7 +535,7 @@ object DesktopSmokeTest {
                 takeDamage(50.0)
                 update(2.0)
             }
-            addEnemy(640.0, EnemyType.NORMAL).takeDamage(80.0)
+            addEnemy(640.0, EnemyType.NORMAL, elite = true).takeDamage(80.0)
             addEnemy(760.0, EnemyType.VANGUARD)
 
             val renderer = privateField<WorldRenderer>(screen, "renderer")
@@ -507,6 +565,7 @@ object DesktopSmokeTest {
                 expectColor("gap between armor plates", 403f, 307f, 0x080d17)
                 expectColor("active regeneration", 542f, 301f, 0xd5a1ff)
                 expectColor("critical health", 628f, 301f, 0xff7d83)
+                expectColor("elite marker beside the body", 616f, 280f, 0xffe08a)
                 expectColor("Vanguard shield", 750f, 307f, 0x56dffa)
                 expectColor("Vanguard armor above its shield", 760f, 314f, 0xffcb68)
             } finally {

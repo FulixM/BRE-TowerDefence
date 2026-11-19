@@ -47,16 +47,21 @@ class RemixRecords(
     internal fun best(challenge: RemixChallenge): RemixScore? = RemixScore.decode(load(challenge.code))
 
     internal fun submit(game: GameSimulation): Boolean {
-        val challenge = game.challenge ?: return false
+        val (code, score) = improvedRecord(game) ?: return false
+        save(code, score)
+        return true
+    }
+
+    internal fun improvedRecord(game: GameSimulation): Pair<String, String>? {
+        val challenge = game.challenge ?: return null
         val cleared = when (game.state) {
             GameState.WON -> game.wave
             GameState.LOST -> game.wave - 1
-            else -> return false
+            else -> return null
         }
         val score = RemixScore(cleared, game.lives, game.kills)
         val previous = best(challenge)
-        if (previous != null && score <= previous) return false
-        save(challenge.code, score.encode())
-        return true
+        if (previous != null && score <= previous) return null
+        return challenge.code to score.encode()
     }
 }

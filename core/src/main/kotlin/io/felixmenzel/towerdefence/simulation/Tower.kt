@@ -53,6 +53,18 @@ class Tower(
         level++
     }
 
+    internal fun checkpoint() = TowerCheckpoint(id, type, x, y, level, targetPriority, nextAttackTick)
+
+    internal fun restore(checkpoint: TowerCheckpoint) {
+        check(level == 1) { "Restore requires a fresh tower" }
+        require(checkpoint.id == id && checkpoint.type == type && checkpoint.x == x && checkpoint.y == y)
+        require(checkpoint.level in 1..MAX_LEVEL && checkpoint.nextAttackTick >= 0L)
+
+        repeat(checkpoint.level - 1) { upgrade() }
+        targetPriority = checkpoint.priority
+        nextAttackTick = checkpoint.nextAttackTick
+    }
+
     internal fun cycleTargetPriority() {
         val priorities = TargetPriority.entries
         targetPriority = priorities[(targetPriority.ordinal + 1) % priorities.size]

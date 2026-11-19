@@ -11,6 +11,7 @@ class Enemy(
     val maxHealth: Double,
     val type: EnemyType = EnemyType.NORMAL,
     val bounty: Int = type.bounty,
+    val isElite: Boolean = false,
 ) {
     private val path = path.toList()
 

@@ -28,6 +28,10 @@ On **Twin Locks**, press **V** between waves to switch paths. Both routes remain
 
 Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive 15 waves to win. The final five preview named formations built around shields, armor, regeneration and mixed assaults.
 
+Before wave 8, opt into **Elite [B]** to face three opening enemies with 60% more health. Yellow brackets mark Elites. Clearing that wave awards 90 extra gold.
+
+The game keeps one local checkpoint between waves. Choose **Continue** at startup to restore your towers, wave state and pending echo. If you quit during combat, you resume from before that wave. Open **Wave report [L]** to see escapes and echo hits wave by wave.
+
 Enemy health appears green and turns coral when critical. Cyan bars show remaining shield. Amber segments indicate persistent damage resistance, which Rail bypasses. A lilac plus shows active healing. The enemy guide includes the same symbols.
 
 | Input | Action |

@@ -495,6 +495,18 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.rect(x + 21f, y + 17f, 2f, 8f)
             shapes.rect(x + 18f, y + 20f, 8f, 2f)
         }
+        if (enemy.isElite) drawEliteBrackets(x, y)
+    }
+
+    private fun drawEliteBrackets(x: Float, y: Float) {
+        shapes.color = ELITE
+        for (side in -1..1 step 2) {
+            val outer = x + side * 24f
+            val inner = x + side * 19f
+            shapes.rectLine(inner, y - 11f, outer, y - 6f, 2.5f)
+            shapes.rectLine(outer, y - 6f, outer, y + 6f, 2.5f)
+            shapes.rectLine(outer, y + 6f, inner, y + 11f, 2.5f)
+        }
     }
 
     private fun drawDefenseMeter(x: Float, y: Float, height: Float, fraction: Float, fill: Color, edge: Color) {
@@ -753,6 +765,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val ICE = Color.valueOf("a8bfff")
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")
+        val ELITE = Color.valueOf("ffe08a")
         val DEFENSE_TRACK = Color.valueOf("080d17")
         val SHIELD_TRACK_EDGE = Color.valueOf("3c7383")
         val MUTED = Color.valueOf("9aafc6")
