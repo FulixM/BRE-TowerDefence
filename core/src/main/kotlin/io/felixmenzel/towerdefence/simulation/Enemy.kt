@@ -20,6 +20,7 @@ class Enemy(
     private val marshalRelays: List<Enemy>? = null,
 ) {
     private val path = path.toList()
+    internal var onTowerDamage: ((TowerType, Double) -> Unit)? = null
 
     init {
         require(path.isNotEmpty()) { "Enemy path must contain at least one waypoint" }
@@ -80,7 +81,7 @@ class Enemy(
         if (!isAlive || hasReachedGoal) return
 
         if (poisonSeconds > 0.0) {
-            takeDamage(poisonPerSecond * min(stepSeconds, poisonSeconds))
+            applyDamage(poisonPerSecond * min(stepSeconds, poisonSeconds), false, 1.0, TowerType.VENOM)
             poisonSeconds = (poisonSeconds - stepSeconds).coerceAtLeast(0.0)
             if (!isAlive) return
         }
@@ -119,16 +120,18 @@ class Enemy(
         applyDamage(damage, piercesArmor, shieldMultiplier = 1.0)
     }
 
-    internal fun takeShieldbreakingDamage(damage: Double) {
-        applyDamage(damage, piercesArmor = false, shieldMultiplier = 3.0)
+    internal fun takeTowerDamage(type: TowerType, damage: Double, railModule: RailModule) {
+        when (type) {
+            TowerType.SUNDER -> applyDamage(damage, false, 3.0, type)
+            TowerType.RAIL -> {
+                val relayFactor = if (isMarshalRelay) railModule.relayDamageFactor else 1.0
+                applyDamage(damage * relayFactor, true, railModule.shieldDamageFactor, type)
+            }
+            else -> applyDamage(damage, false, 1.0, type)
+        }
     }
 
-    internal fun takeRailDamage(damage: Double, module: RailModule) {
-        val relayFactor = if (isMarshalRelay) module.relayDamageFactor else 1.0
-        applyDamage(damage * relayFactor, piercesArmor = true, shieldMultiplier = module.shieldDamageFactor)
-    }
-
-    private fun applyDamage(damage: Double, piercesArmor: Boolean, shieldMultiplier: Double) {
+    private fun applyDamage(damage: Double, piercesArmor: Boolean, shieldMultiplier: Double, source: TowerType? = null) {
         require(damage.isFinite() && damage >= 0.0) { "Damage must be finite and non-negative" }
         if (damage == 0.0 || !isAlive) return
         recoveryDelay = 1.5
@@ -139,7 +142,9 @@ class Enemy(
         val absorbed = min(shield, incoming * shieldMultiplier)
         shield -= absorbed
         // Only damage spent against the shield gains the bonus; overflow uses the normal rate.
+        val healthBefore = health
         health = (health - (incoming - absorbed / shieldMultiplier)).coerceAtLeast(0.0)
+        if (source != null) onTowerDamage?.invoke(source, absorbed + (healthBefore - health))
     }
 
     /** Slows never multiply; repeated shots refresh the strongest active slow. */

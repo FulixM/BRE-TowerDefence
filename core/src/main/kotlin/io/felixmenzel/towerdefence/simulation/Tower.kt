@@ -265,11 +265,7 @@ internal fun applyTowerHit(
     railModule: RailModule = RailModule.STANDARD,
 ) {
     val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
-    when (type) {
-        TowerType.SUNDER -> enemy.takeShieldbreakingDamage(damage)
-        TowerType.RAIL -> enemy.takeRailDamage(damage, railModule)
-        else -> enemy.takeDamage(damage * strength)
-    }
+    enemy.takeTowerDamage(type, damage * strength, railModule)
     if (!enemy.isAlive) return
     when (type) {
         TowerType.FROST -> enemy.applySlow(0.55, 1.5)

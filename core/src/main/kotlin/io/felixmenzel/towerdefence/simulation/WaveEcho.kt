@@ -8,10 +8,12 @@ internal class WaveEcho(private val terrain: BattleTerrain = BattleTerrain.FLAT)
         private set
 
     private var waveStartTick = 0L
+    private var playbackDelay = 0L
     private var recording = mutableListOf<RecordedImpact>()
     private var playback: List<RecordedImpact> = emptyList()
     private var cursor = 0
 
+    val firstRecordedDelay: Long? get() = recording.firstOrNull()?.delay
     val recordedCount: Int get() = recording.size
     val remainingCount: Int get() = playback.size - cursor
     fun nextShot(preparing: Boolean): Shot? =
@@ -37,8 +39,9 @@ internal class WaveEcho(private val terrain: BattleTerrain = BattleTerrain.FLAT)
         if (recordingTowerId == id) recordingTowerId = null
     }
 
-    fun startWave(tick: Long) {
+    fun startWave(tick: Long, delayTicks: Long = 0L) {
         waveStartTick = tick
+        playbackDelay = delayTicks
         playback = recording
         recording = mutableListOf()
         cursor = 0
@@ -54,7 +57,7 @@ internal class WaveEcho(private val terrain: BattleTerrain = BattleTerrain.FLAT)
     fun replay(tick: Long, enemies: List<Enemy>, shots: MutableList<Shot>): Int {
         var hits = 0
         val elapsed = tick - waveStartTick
-        while (cursor < playback.size && playback[cursor].delay <= elapsed) {
+        while (cursor < playback.size && playback[cursor].delay <= elapsed - playbackDelay) {
             val shot = playback[cursor++].resolve(tick, enemies)
             shots.add(shot)
             hits += shot.hitEnemyIds.size

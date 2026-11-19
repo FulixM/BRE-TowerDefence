@@ -467,8 +467,41 @@ object DesktopSmokeTest {
                     key(Input.Keys.ENTER)
                     simulation = privateField(screen, "simulation")
                     check(simulation.research.firepower == 1)
+                    key(Input.Keys.M)
+                }
+                327 -> {
+                    click(701f, 510f)
+                    check(privateField<MissionMode>(screen, "pendingMode") == MissionMode.FRONTLINE)
+                    click(332f, 184f)
+                }
+                328 -> {
+                    check(simulation.mode == MissionMode.FRONTLINE && simulation.battleMap == BattleMap.TWIN_LOCKS)
+                    key(Input.Keys.NUM_1)
+                    click(150f, 245f + DefenseScreen.BOARD_Y)
+                    key(Input.Keys.NUM_1)
+                    click(275f, 240f + DefenseScreen.BOARD_Y)
+                    key(Input.Keys.E)
+                    key(Input.Keys.SPACE)
+                    while (simulation.state == GameState.RUNNING) simulation.update()
+                    check(simulation.canChooseEchoDelay)
+                    click(1110f, 629f)
+                    check(privateField<Boolean>(screen, "damageOpen"))
+                }
+                329 -> {
+                    click(810f, 607f)
+                    check(privateField<Boolean>(screen, "damageWholeRun"))
+                    writeScreenshot("-damage-panel")
+                    click(1110f, 629f)
+                    check(!privateField<Boolean>(screen, "damageOpen"))
+                    click(605f, 136f)
+                    check(simulation.echoDelayed)
+                    click(790f, 136f)
+                    check(privateField<Boolean>(screen, "movePending"))
+                    click(275f, 365f + DefenseScreen.BOARD_Y)
+                    check(!simulation.canMoveTower)
+                    check(simulation.towerAt(275.0, 365.0) != null)
                     screenshotWritten = true
-                    println("Desktop smoke passed: controls, rendering, mission settings, checkpoint reload, tower modules, and campaign workshop research.")
+                    println("Desktop smoke passed: controls, rendering, mission settings, checkpoints, damage panel and Shifting Front.")
                     Gdx.app.exit()
                 }
             }

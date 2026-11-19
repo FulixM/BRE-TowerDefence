@@ -38,6 +38,7 @@ internal fun HudCanvas.drawMissionSetup(
     toggleRemix: () -> Unit,
     reroll: () -> Unit,
     toggleQuick: () -> Unit,
+    toggleFrontline: () -> Unit,
     cycleModule: () -> Unit,
     toggleRailModule: () -> Unit,
     openWorkshop: () -> Unit,
@@ -51,13 +52,15 @@ internal fun HudCanvas.drawMissionSetup(
     text("MISSION SETUP", 182f, 559f, 1.65f, WHITE)
     button("Workshop / ${research.available} RP", 610f, 530f, 192f, 37f, scale = 0.82f, accent = CYAN,
         action = openWorkshop)
-    text("${mode.title} / ${mode.waveCount} waves", 182f, 524f, 0.9f, MUTED, 636f)
+    text("${mode.title} / ${mode.waveCount} waves", 182f, 524f, 0.9f, MUTED, 380f)
+    button(if (mode == MissionMode.FRONTLINE) "Switch to Campaign" else "Shifting Front / 8 waves",
+        610f, 496f, 192f, 28f, accent = CYAN, scale = 0.76f, action = toggleFrontline)
     val mapGap = 12f
     val mapWidth = (636f - mapGap * (BattleMap.entries.size - 1)) / BattleMap.entries.size
     for ((index, map) in BattleMap.entries.withIndex()) {
         val x = 182f + index * (mapWidth + mapGap)
         rect(x, 345f, mapWidth, 145f, BACKGROUND)
-        button(map.title, x, 440f, mapWidth, 42f, enabled = mode == MissionMode.CAMPAIGN || map == BattleMap.CORRIDOR,
+        button(map.title, x, 440f, mapWidth, 42f, enabled = mode.supports(map, pendingSeed),
             accent = if (pendingMap == map) CYAN else BORDER) { selectMap(map) }
         // Draw the preview from the mission route.
         val routeColor = if (pendingMap == map) CYAN else BORDER
@@ -84,9 +87,11 @@ internal fun HudCanvas.drawMissionSetup(
         182f, 249f, 0.78f, CYAN, 636f)
     val quick = mode == MissionMode.QUICK
     button(if (pendingSeed == null) "Mode / Classic" else "Mode / Remix", 182f, 210f, 178f, 24f,
-        enabled = !quick, accent = if (pendingSeed == null) BORDER else CYAN, scale = 0.75f, action = toggleRemix)
+        enabled = mode == MissionMode.CAMPAIGN, accent = if (pendingSeed == null) BORDER else CYAN, scale = 0.75f, action = toggleRemix)
     if (pendingSeed != null) {
         button("Reroll seed $pendingSeed", 370f, 210f, 182f, 24f, scale = 0.75f, action = reroll)
+    } else if (mode == MissionMode.FRONTLINE) {
+        text("Twin Locks / two route shifts", 374f, 228f, 0.70f, MUTED)
     } else if (quick) {
         text("Mixed squads on The Corridor.", 374f, 228f, 0.75f, MUTED)
     } else {

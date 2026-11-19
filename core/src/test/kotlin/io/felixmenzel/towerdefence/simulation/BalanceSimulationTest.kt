@@ -185,6 +185,21 @@ class BalanceSimulationTest {
         assertEquals(first.towers.map { it.level }, second.towers.map { it.level })
     }
 
+    @Test
+    fun `two different mixed defenses win the eight wave shifting front`() {
+        val forward = twinLocksPlan.toMutableList().apply {
+            this[2] = Placement(TowerType.CANNON, 330.0, 395.0)
+            this[3] = Placement(TowerType.FROST, 482.0, 375.0)
+        }
+        for (plan in listOf(twinLocksPlan, forward)) {
+            val game = playCampaign(GameSimulation(BattleMap.TWIN_LOCKS, mode = MissionMode.FRONTLINE)) {
+                fortifyUsing(it, plan)
+            }
+            assertEquals(GameState.WON, game.state)
+            assertEquals(8, game.wave)
+        }
+    }
+
     private fun playCampaign(prepare: (GameSimulation) -> Unit): GameSimulation =
         playCampaign(GameSimulation(), prepare = prepare)
 

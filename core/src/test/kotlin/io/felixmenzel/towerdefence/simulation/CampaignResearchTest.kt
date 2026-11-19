@@ -84,8 +84,8 @@ class CampaignResearchTest {
         var value = ""
         val saves = MissionSaves({ value }, { value = it })
         saves.save(assertNotNull(game.checkpoint()))
-        // A wave-zero v3 checkpoint has the same layout before the four v4 research integers, v5 terrain flag, v6 grid flag, v7 undo flag, and CRC.
-        val payload = Base64.getDecoder().decode(value).dropLast(23).toByteArray()
+        // A wave-zero v3 checkpoint has the same layout before the four v4 research integers, v5 terrain flag, v6 grid flag, v7 undo flag, empty v8 stats and Frontline flags, and CRC.
+        val payload = Base64.getDecoder().decode(value).dropLast(34).toByteArray()
         ByteBuffer.wrap(payload).putInt(3)
         val checksum = CRC32().apply { update(payload) }.value.toInt()
         value = Base64.getEncoder().encodeToString(payload + ByteBuffer.allocate(4).putInt(checksum).array())

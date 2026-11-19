@@ -58,6 +58,7 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 
 | Input | Action |
 | --- | --- |
+| Damage | Expand the top-right HUD for actual health and shield damage by tower type (wave or mission) |
 | Mouse | Choose/build/select towers and use HUD buttons |
 | Shift + click | Place the selected tower and keep building while you can afford another in grid missions |
 | Hover Upgrade | Preview the additional route coverage in gold |
@@ -98,3 +99,8 @@ The desktop smoke test needs a display. On headless Linux, prefix the command wi
 - `assets`: original template graphics retained; procedural battlefield art and a bundled, openly licensed DejaVu Sans Latin font (license in `assets/fonts/LICENSE.txt`). No runtime asset downloads.
 
 See [AGENTS.md](AGENTS.md) for entry points, [game-design.md](docs/game-design.md) for design decisions, [balance.md](docs/balance.md) for campaign probes, and [verification.md](docs/verification.md) for first-mission verification.
+
+
+### Shifting Front prototype
+
+Open **Mission → Shifting Front / 8 waves** to play Twin Locks. The main route changes in waves 3 and 6, and two enemy stragglers still use the prior route. Between waves, select a tower and use **Move tower (1)** to relocate it once per mission. Its recorded echo stays at the original position. After recording an echo, you may commit one **+3s** playback delay per mission.
