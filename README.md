@@ -38,11 +38,11 @@ Commanders in waves 17 and 19 cut damage to their two nearby escorts in half. A 
 
 Open **Mission Setup → Workshop** to turn Classic campaign milestones into permanent research. Spend points on tower damage, reload, targeting range or starting gold. Higher difficulties also record mastery on easier ones. [Progression rules](docs/progression.md)
 
-New missions show a 20-by-12 grid of build squares. The preview snaps to the square centre, with green for available squares and red for blocked or occupied squares. Click anywhere inside an occupied square to select that tower. Existing saves keep their original tower positions.
+New missions show a 20-by-12 grid of build squares. The preview snaps to the square centre, with green for available squares and red for blocked or occupied squares. In build mode, corner marks show free squares and hatching marks unavailable ones. Click anywhere inside an occupied square to select that tower. Existing saves keep their original tower positions.
 
 In Classic and new Remix missions, build on a terrace or summit to shoot farther downhill.
 Base tower range is 6% shorter. Direct shots gain 10% per level downhill or lose 10% per level uphill.
-Impact splash and chain jump distances stay fixed. Range previews mark reachable points along the active route.
+Impact splash and chain jump distances stay fixed. Range previews mark reachable points along the active route, where + and − signs mark uphill and downhill transitions.
 Classic maps have fixed hill layouts. Remix uses the seed for hill layout while keeping the map's routes.
 Quick missions and missions resumed from older saves retain their original terrain and range.
 

@@ -42,6 +42,7 @@ import kotlin.math.sqrt
 class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private val shapes = ShapeRenderer()
     private val terrainRenderer = TerraceRenderer(shapes)
+    private val boardGuides = BoardGuides(shapes)
     private val batch = SpriteBatch()
     private val viewportBuffer = BufferUtils.newIntBuffer(4)
     private val scissorBuffer = BufferUtils.newIntBuffer(4)
@@ -220,6 +221,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 position += 54f
             }
         }
+        if (placing && simulation.gridPlacement) boardGuides.drawBuildHints(simulation)
+        if (simulation.elevatedTerrain) boardGuides.drawGrades(simulation)
         path.firstOrNull()?.let { drawGate(it.x.toFloat(), it.y.toFloat(), CORAL, false, simulation.tick) }
         path.lastOrNull()?.let { drawGate(it.x.toFloat(), it.y.toFloat(), CYAN, true, simulation.tick) }
         // Subtle edge rails and corner brackets frame the play area.
@@ -762,6 +765,12 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val tip = if (simulation.elevatedTerrain) "HIGH GROUND EXTENDS REACH  /  DOTS SHOW ROUTE COVERAGE"
             else "BUILD OFF THE ROUTE  /  PROTECT THE CORE"
         font.draw(batch, tip, 32f, 28f)
+        if (simulation.elevatedTerrain) {
+            font.color = BoardGuides.UPHILL
+            font.draw(batch, "+ UPHILL", 675f, 28f)
+            font.color = BoardGuides.DOWNHILL
+            font.draw(batch, "- DOWNHILL", 767f, 28f)
+        }
         simulation.path.firstOrNull()?.let {
             font.color = CORAL
             val labelY = if (it.y > 350.0) it.y.toFloat() - 42f else it.y.toFloat() + 49f
