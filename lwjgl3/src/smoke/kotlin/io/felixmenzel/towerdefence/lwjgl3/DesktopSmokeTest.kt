@@ -149,9 +149,12 @@ object DesktopSmokeTest {
                     check(tower.targetPriority == TargetPriority.NEAREST)
                     key(Input.Keys.T)
                     check(tower.targetPriority == TargetPriority.FIRST)
+                    val button = viewport.project(Vector2(1049f, 200f))
+                    Gdx.input.setCursorPosition(button.x.roundToInt(), (Gdx.graphics.height - button.y).roundToInt())
                 }
                 3 -> {
-                    writeScreenshot("-high-ground")
+                    checkUpgradeCoverage()
+                    writeScreenshot("-upgrade-preview")
                     val tower = simulation.towers.single()
                     val cost = checkNotNull(tower.upgradeCost)
                     val before = simulation.gold
@@ -178,13 +181,29 @@ object DesktopSmokeTest {
                     check(privateField<Long?>(privateField<Any>(simulation, "echo"), "armedTowerId") == null)
                 }
                 5 -> {
+                    val input = Gdx.input.inputProcessor
+                    val gold = simulation.gold
+                    key(Input.Keys.NUM_1)
+                    check(input.keyDown(Input.Keys.SHIFT_LEFT))
+                    check(input.keyDown(Input.Keys.SHIFT_RIGHT))
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
+                    check(privateField<TowerType?>(screen, "buildType") == TowerType.RAPID)
+                    check(input.keyUp(Input.Keys.SHIFT_LEFT))
+                    click(140f, 208f + DefenseScreen.BOARD_Y)
+                    check(simulation.towers.size == 1 && simulation.gold == gold - TowerType.RAPID.cost)
+                    check(privateField<TowerType?>(screen, "buildType") == TowerType.RAPID)
+                    click(450f, 250f + DefenseScreen.BOARD_Y)
+                    check(input.keyUp(Input.Keys.SHIFT_RIGHT))
+                    check(simulation.towers.size == 2 && simulation.gold == gold - 2 * TowerType.RAPID.cost)
+                    check(privateField<TowerType?>(screen, "buildType") == null)
+                    check(privateField<Long?>(screen, "selectedTowerId") == simulation.towers.last().id)
                     frozenTick = simulation.tick
                     key(Input.Keys.R)
                 }
                 8 -> {
                     check(simulation.tick == frozenTick) { "Restart confirmation did not freeze simulation" }
                     key(Input.Keys.ESCAPE)
-                    check(simulation.towers.isEmpty())
+                    check(simulation.towers.size == 2)
                 }
                 9 -> {
                     key(Input.Keys.R)
@@ -677,6 +696,23 @@ object DesktopSmokeTest {
                 pixels.dispose()
             }
             writeScreenshot("-enemy-defenses")
+        }
+
+        private fun checkUpgradeCoverage() {
+            // This point on the downhill route is reached by a level 2 Pulse at the summit.
+            val spot = viewport.project(Vector2(273f, DefenseScreen.BOARD_Y + 160f))
+            val pixels = Pixmap.createFromFrameBuffer(0, 0, Gdx.graphics.backBufferWidth, Gdx.graphics.backBufferHeight)
+            try {
+                val x = (spot.x * pixels.width / Gdx.graphics.width).toInt()
+                val y = (spot.y * pixels.height / Gdx.graphics.height).toInt()
+                val pixel = pixels.getPixel(x, y) ushr 8
+                check(((pixel shr 16) and 255) > 200 && ((pixel shr 8) and 255) > 160 && (pixel and 255) < 160) {
+                    "Hovering Upgrade did not render a gold marker on the newly reachable route"
+                }
+                check(simulation.towers.single().level == 1) { "Hovering Upgrade bought the upgrade" }
+            } finally {
+                pixels.dispose()
+            }
         }
 
         private fun writeScreenshot(suffix: String = "") {

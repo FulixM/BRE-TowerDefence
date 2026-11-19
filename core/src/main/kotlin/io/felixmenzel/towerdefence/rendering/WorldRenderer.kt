@@ -63,6 +63,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         buildType: TowerType? = null,
         cursorX: Double? = null,
         cursorY: Double? = null,
+        previewUpgrade: Boolean = false,
     ) {
         batch.projectionMatrix = projection
         val hadBlend = Gdx.gl.glIsEnabled(GL20.GL_BLEND)
@@ -88,7 +89,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             pixelsPerUnit = nativeDensity
             shapes.projectionMatrix = projection
         }
-        drawGeometry(simulation, alpha, selectedTower, buildType, cursorX, cursorY)
+        drawGeometry(simulation, alpha, selectedTower, buildType, cursorX, cursorY, previewUpgrade)
         if (supersample) {
             fallbackBuffer!!.end()
             Gdx.gl.glViewport(viewportBuffer.get(0), viewportBuffer.get(1), viewportBuffer.get(2), viewportBuffer.get(3))
@@ -123,11 +124,11 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     }
 
     private fun drawGeometry(simulation: GameSimulation, alpha: Double, selectedTower: Tower?,
-        buildType: TowerType?, cursorX: Double?, cursorY: Double?) {
+        buildType: TowerType?, cursorX: Double?, cursorY: Double?, previewUpgrade: Boolean) {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         drawBoard(simulation, buildType != null)
         selectedTower?.let {
-            drawCoverage(simulation, it.x, it.y, it.range, CYAN)
+            drawCoverage(simulation, it.x, it.y, it.range, CYAN, if (previewUpgrade) it.nextUpgrade?.range else null)
             if (simulation.gridPlacement) drawTile(it.x.toFloat(), it.y.toFloat(), CYAN)
         }
         for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
@@ -317,15 +318,17 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         ring(x, y, range, 1.3f, color, 0.55f)
     }
 
-    private fun drawCoverage(simulation: GameSimulation, x: Double, y: Double, range: Double, color: Color) {
+    private fun drawCoverage(simulation: GameSimulation, x: Double, y: Double, range: Double, color: Color,
+        upgradeRange: Double? = null) {
         val terrain = simulation.terrain
-        if (!simulation.elevatedTerrain) {
-            drawRange(x.toFloat(), y.toFloat(), range.toFloat(), color)
-            return
-        }
         val height = terrain.heightAt(x, y)
-        drawRange(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 2).toFloat(), color)
-        ring(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 0).toFloat(), 1f, color, 0.28f)
+        if (simulation.elevatedTerrain) {
+            drawRange(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 2).toFloat(), color)
+            ring(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 0).toFloat(), 1f, color, 0.28f)
+        } else {
+            drawRange(x.toFloat(), y.toFloat(), range.toFloat(), color)
+            if (upgradeRange == null) return
+        }
         for (index in 0 until simulation.path.lastIndex) {
             val start = simulation.path[index]
             val end = simulation.path[index + 1]
@@ -338,6 +341,9 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 if (terrain.canReach(x, y, height, range, targetX, targetY)) {
                     shapes.setColor(color.r, color.g, color.b, 0.92f)
                     shapes.circle(targetX.toFloat(), targetY.toFloat(), 2f, 10)
+                } else if (upgradeRange != null && terrain.canReach(x, y, height, upgradeRange, targetX, targetY)) {
+                    shapes.color = UPGRADE_COVERAGE
+                    diamond(targetX.toFloat(), targetY.toFloat(), 3.5f)
                 }
             }
         }
@@ -903,6 +909,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val SHADOW = Color(0.005f, 0.009f, 0.02f, 0.75f)
         val CYAN = Color.valueOf("59d8ea")
         val ORANGE = Color.valueOf("ffba6b")
+        val UPGRADE_COVERAGE = Color.valueOf("ffd278")
         val ICE = Color.valueOf("a8bfff")
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")

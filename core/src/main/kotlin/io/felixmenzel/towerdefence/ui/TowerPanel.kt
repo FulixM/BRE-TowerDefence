@@ -1,5 +1,7 @@
 package io.felixmenzel.towerdefence.ui
 
+import com.badlogic.gdx.math.Rectangle
+import com.badlogic.gdx.math.Vector2
 import io.felixmenzel.towerdefence.rendering.towerColor
 import io.felixmenzel.towerdefence.simulation.ActionResult
 import io.felixmenzel.towerdefence.simulation.CannonSpecialization
@@ -16,10 +18,15 @@ import io.felixmenzel.towerdefence.ui.HudPalette.ORANGE
 import io.felixmenzel.towerdefence.ui.HudPalette.WHITE
 import kotlin.math.roundToInt
 
+private val upgradeButton = Rectangle(922f, 179f, 254f, 42f)
+
+internal fun isUpgradeHovered(cursor: Vector2?): Boolean = cursor?.let(upgradeButton::contains) == true
+
 internal fun HudCanvas.drawTowerPanel(
     simulation: GameSimulation,
     tower: Tower?,
     buildType: TowerType?,
+    previewUpgrade: Boolean,
     choose: (TowerType) -> Unit,
     openEnemyGuide: () -> Unit,
     cancelPlacement: () -> Unit,
@@ -43,7 +50,7 @@ internal fun HudCanvas.drawTowerPanel(
 
     when {
         buildType != null -> buildPanel(buildType, simulation, cancelPlacement)
-        tower != null -> selectedPanel(tower, simulation, report, sell)
+        tower != null -> selectedPanel(tower, simulation, previewUpgrade, report, sell)
         else -> {
             text("YOUR DEFENCE", 922f, 313f, 0.95f, WHITE)
             text("${simulation.towers.size} towers deployed", 922f, 285f, 0.95f, CYAN)
@@ -79,12 +86,13 @@ private fun HudCanvas.buildPanel(type: TowerType, simulation: GameSimulation, ca
         else -> type.description
     }
     text(description, 922f, 230f, 0.88f, WHITE, 250f)
-    text(if (simulation.gridPlacement) "Choose a free square." else "Click clear ground to build.", 922f, 175f, 0.80f, MUTED, 250f)
+    val placementHint = if (simulation.gridPlacement) "Shift-click to place several." else "Click clear ground to build."
+    text(placementHint, 922f, 175f, 0.80f, MUTED, 250f)
     button("Cancel placement [Esc]", 922f, 116f, 254f, 40f) { cancelPlacement() }
 }
 
 private fun HudCanvas.selectedPanel(
-    tower: Tower, simulation: GameSimulation, report: (ActionResult) -> Unit, sell: (Tower) -> Unit,
+    tower: Tower, simulation: GameSimulation, previewUpgrade: Boolean, report: (ActionResult) -> Unit, sell: (Tower) -> Unit,
 ) {
     val module = when {
         tower.railModule == RailModule.RELAY_HUNTER -> " / HUNTER"
@@ -118,7 +126,9 @@ private fun HudCanvas.selectedPanel(
             text("Splash radius ${tower.cannonSpecialization.radius.toInt()}", 922f, 206f, 0.85f, ORANGE)
         }
     } else {
-        button(if (cost == null) "Fully upgraded" else "Upgrade [U]  /  $cost gold", 922f, 179f, 254f, 42f,
+        if (previewUpgrade) text("Gold markers show added coverage.", 922f, 174f, 0.69f, GOLD)
+        button(if (cost == null) "Fully upgraded" else "Upgrade [U]  /  $cost gold",
+            upgradeButton.x, upgradeButton.y, upgradeButton.width, upgradeButton.height,
             cost != null && simulation.gold >= cost, towerColor(tower.type)) { report(simulation.upgradeTower(tower.id)) }
     }
     button("Sell  /  +${tower.sellValue} gold", 922f, 123f, 254f, 40f, accent = ORANGE) {

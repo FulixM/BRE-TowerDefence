@@ -59,6 +59,8 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 | Input | Action |
 | --- | --- |
 | Mouse | Choose/build/select towers and use HUD buttons |
+| Shift + click | Place the selected tower and keep building while you can afford another in grid missions |
+| Hover Upgrade | Preview the additional route coverage in gold |
 | 1–9 / 0 | Choose a tower in catalogue order |
 | M | Open mission setup |
 | G | Read the enemy guide and pause the current wave |
