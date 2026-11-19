@@ -197,7 +197,12 @@ class BalanceSimulationTest {
         return game
     }
 
-    private fun fortify(game: GameSimulation) = fortifyUsing(game, buildPlan)
+    private fun fortify(game: GameSimulation) {
+        val plan = if (game.mode == MissionMode.CAMPAIGN && game.wave == Marshal.WAVE - 1) {
+            buildPlan + lateReinforcements(BattleMap.CORRIDOR)
+        } else buildPlan
+        fortifyUsing(game, plan)
+    }
 
     private fun fortifyUsing(game: GameSimulation, plan: List<Placement>) {
         // Fill the central bends first, then cover the exit. Commands enforce every cost.

@@ -129,7 +129,22 @@ internal data class WavePlan(
     val enemies: List<EnemyType>,
     val intervals: List<Long>,
     val commanderSlots: List<Int> = emptyList(),
+    val marshalFormation: Boolean = false,
 ) {
+    fun withMarshal(): WavePlan {
+        val formation = enemies.toMutableList()
+        val reserved = Marshal.relaySlots.first..Marshal.SLOT
+        for (slot in reserved) {
+            val type = if (slot == Marshal.SLOT) ARMORED else SHIELDED
+            if (formation[slot] == type) continue
+            // Move existing enemies into the boss slots without changing the total roster.
+            val source = formation.indices.first { it !in reserved && formation[it] == type }
+            formation[source] = formation[slot]
+            formation[slot] = type
+        }
+        return copy(enemies = formation, marshalFormation = true)
+    }
+
     fun commanderFor(index: Int): Int? = commanderSlots.firstOrNull { index in it..it + 2 }
 
     val description: String = describe()
@@ -137,12 +152,17 @@ internal data class WavePlan(
     fun describe(replaceBulwarkWithBoss: Boolean = false): String {
         val counts = enemies.groupingBy { it }.eachCount()
         val groups = EnemyType.entries.mapNotNull { type ->
-            val replacements = if (type == ARMORED) commanderSlots.size + if (replaceBulwarkWithBoss) 1 else 0 else 0
+            val replacements = when (type) {
+                ARMORED -> commanderSlots.size + if (replaceBulwarkWithBoss || marshalFormation) 1 else 0
+                SHIELDED -> if (marshalFormation) Marshal.relaySlots.count() else 0
+                else -> 0
+            }
             val count = (counts[type] ?: 0) - replacements
             if (count > 0) "$count ${type.title}" else null
         }
         return buildList {
             if (replaceBulwarkWithBoss) add("Bastion")
+            if (marshalFormation) add("Marshal + ${Marshal.relaySlots.count()} Relays")
             if (commanderSlots.isNotEmpty()) add("${commanderSlots.size} Commander")
             addAll(groups)
         }.joinToString(" / ")
