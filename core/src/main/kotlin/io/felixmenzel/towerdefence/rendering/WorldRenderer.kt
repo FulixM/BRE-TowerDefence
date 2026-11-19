@@ -123,7 +123,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         buildType: TowerType?, cursorX: Double?, cursorY: Double?) {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
         drawBoard(simulation)
-        selectedTower?.let { drawRange(it.x.toFloat(), it.y.toFloat(), it.range.toFloat(), CYAN) }
+        selectedTower?.let { drawCoverage(simulation, it.x, it.y, it.range, CYAN) }
         for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
         shapes.color = COMMAND_LINK
         for (escort in simulation.enemies) {
@@ -185,6 +185,20 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.rect(x - 3f, y.toFloat(), 7f, 1f)
                 shapes.rect(x.toFloat(), y - 3f, 1f, 7f)
             }
+        }
+        for (terrace in simulation.terrain.terraces) {
+            val x = terrace.x.toFloat()
+            val y = terrace.y.toFloat()
+            val edge = terrace.radius.toFloat()
+            val summit = terrace.summitRadius.toFloat()
+            shapes.setColor(0.05f, 0.08f, 0.09f, 0.67f)
+            circle(x, y - 5f, edge)
+            shapes.setColor(0.15f, 0.27f, 0.25f, 0.84f)
+            circle(x, y, edge)
+            ring(x, y, edge, 2f, TERRACE_EDGE, 0.75f)
+            shapes.setColor(0.23f, 0.40f, 0.33f, 0.91f)
+            circle(x, y, summit)
+            ring(x, y, summit, 2f, TERRACE_EDGE, 0.95f)
         }
         if (simulation.battleMap == BattleMap.SWITCHBACK) drawRelayTrim()
         simulation.inactivePath?.let { alternate ->
@@ -310,6 +324,32 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         shapes.setColor(color.r, color.g, color.b, 0.055f)
         circle(x, y, range)
         ring(x, y, range, 1.3f, color, 0.55f)
+    }
+
+    private fun drawCoverage(simulation: GameSimulation, x: Double, y: Double, range: Double, color: Color) {
+        val terrain = simulation.terrain
+        if (!simulation.elevatedTerrain) {
+            drawRange(x.toFloat(), y.toFloat(), range.toFloat(), color)
+            return
+        }
+        val height = terrain.heightAt(x, y)
+        drawRange(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 2).toFloat(), color)
+        ring(x.toFloat(), y.toFloat(), terrain.rangeTowards(range, height, 0).toFloat(), 1f, color, 0.28f)
+        for (index in 0 until simulation.path.lastIndex) {
+            val start = simulation.path[index]
+            val end = simulation.path[index + 1]
+            val dx = end.x - start.x
+            val dy = end.y - start.y
+            val steps = ceil(sqrt(dx * dx + dy * dy) / 9.0).toInt().coerceAtLeast(1)
+            for (step in 0 until steps) {
+                val targetX = start.x + dx * step / steps
+                val targetY = start.y + dy * step / steps
+                if (terrain.canReach(x, y, height, range, targetX, targetY)) {
+                    shapes.setColor(color.r, color.g, color.b, 0.92f)
+                    shapes.circle(targetX.toFloat(), targetY.toFloat(), 2f, 10)
+                }
+            }
+        }
     }
 
     private fun drawTower(tower: Tower, simulation: GameSimulation, selected: Boolean) {
@@ -673,7 +713,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             simulation.gold >= type.cost &&
             (simulation.state == GameState.PREPARING || simulation.state == GameState.RUNNING)
         val color = if (valid) HEALTH else CORAL
-        drawRange(x, y, simulation.research.rangeFor(type).toFloat(), color)
+        drawCoverage(simulation, x.toDouble(), y.toDouble(), simulation.baseRange(type), color)
         shapes.setColor(color.r, color.g, color.b, 0.25f)
         hexagon(x, y, 22f)
         ring(x, y, 23f, 2f, color, 0.8f)
@@ -699,7 +739,9 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         font.color = DIM
         val sector = (simulation.battleMap.ordinal + 1).toString().padStart(2, '0')
         font.draw(batch, "SECTOR $sector    /    ${simulation.battleMap.title.uppercase(Locale.ROOT)}", 32f, 470f)
-        font.draw(batch, "BUILD OFF THE ROUTE  /  PROTECT THE CORE", 32f, 28f)
+        val tip = if (simulation.elevatedTerrain) "HIGH GROUND EXTENDS REACH  /  DOTS SHOW ROUTE COVERAGE"
+            else "BUILD OFF THE ROUTE  /  PROTECT THE CORE"
+        font.draw(batch, tip, 32f, 28f)
         simulation.path.firstOrNull()?.let {
             font.color = CORAL
             val labelY = if (it.y > 350.0) it.y.toFloat() - 42f else it.y.toFloat() + 49f
@@ -805,6 +847,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     )
 
     private companion object {
+        private val TERRACE_EDGE = Color(0.52f, 0.72f, 0.58f, 1f)
         const val WIDTH = 900f
         const val HEIGHT = 560f
         const val HIT_FLASH_TICKS = 7L

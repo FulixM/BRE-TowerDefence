@@ -96,11 +96,11 @@ class TwinLocksAndRemixTest {
 
     @Test
     fun `remix codes preserve settings and reject unknown versions or out of range seeds`() {
-        for (map in BattleMap.entries) for (difficulty in Difficulty.entries) {
-            val challenge = RemixChallenge(map, difficulty, 583471)
+        for (map in BattleMap.entries) for (difficulty in Difficulty.entries) for (elevated in listOf(false, true)) {
+            val challenge = RemixChallenge(map, difficulty, 583471, elevated)
             assertEquals(challenge, RemixChallenge.parse(" ${challenge.code.lowercase()} "))
         }
-        for (invalid in listOf("BRE2-T-V-583471", "BRE1-Q-V-583471", "BRE1-T-Z-583471",
+        for (invalid in listOf("BRE3-T-V-583471", "BRE1-Q-V-583471", "BRE1-T-Z-583471",
             "BRE1-T-V-012345", "BRE1-T-V-12345a", "BRE1-T-V-1000000")) {
             assertNull(RemixChallenge.parse(invalid))
         }

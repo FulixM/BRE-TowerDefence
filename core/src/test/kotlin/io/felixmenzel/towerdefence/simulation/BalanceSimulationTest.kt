@@ -59,8 +59,12 @@ class BalanceSimulationTest {
         for (battleMap in BattleMap.entries) {
             for (difficulty in Difficulty.entries) {
                 val game = playCampaign(GameSimulation(battleMap, difficulty)) {
-                    val plan = planFor(battleMap)
-                    val reinforcements = if (it.wave >= Bastion.WAVE) lateReinforcements(battleMap) else emptyList()
+                    val plan = if (battleMap == BattleMap.CORRIDOR) buildPlan.toMutableList().apply {
+                        // Move the central Rapid onto the summit and leave room for the later Sunder.
+                        this[1] = Placement(TowerType.RAPID, 425.0, 286.0)
+                        this[12] = Placement(TowerType.SUNDER, 470.0, 252.0)
+                    } else planFor(battleMap)
+                    val reinforcements = if (it.wave >= Bastion.WAVE - 1) lateReinforcements(battleMap) else emptyList()
                     fortifyUsing(it, plan + reinforcements)
                 }
 

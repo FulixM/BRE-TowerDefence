@@ -66,7 +66,7 @@ private fun HudCanvas.towerCard(
 
 private fun HudCanvas.buildPanel(type: TowerType, simulation: GameSimulation, cancelPlacement: () -> Unit) {
     text("PLACING / ${type.title.uppercase()}", 922f, 313f, 0.95f, towerColor(type))
-    text("Cost ${type.cost}  /  Range ${simulation.research.rangeFor(type).roundToInt()}", 922f, 285f, 0.9f, WHITE)
+    text("Cost ${type.cost}  /  Range ${simulation.baseRange(type).roundToInt()}", 922f, 285f, 0.9f, WHITE)
     val interval = (type.baseAttackIntervalTicks * simulation.railModule.intervalFactor(type) *
         simulation.research.reloadFactor).toLong().coerceAtLeast(1L)
     text("${formatDamage(simulation.research.damageFor(type))} damage / ${formatRate(interval)} shots per sec", 922f, 262f, 0.86f, MUTED)
@@ -97,7 +97,8 @@ private fun HudCanvas.selectedPanel(
     val cost = upgrade?.cost
     text("Damage ${formatDamage(tower.damage)}" + (upgrade?.let { " -> ${formatDamage(it.damage)}" } ?: " / MAX"),
         922f, 285f, 0.88f, WHITE)
-    text("Range ${tower.range.roundToInt()}" + (upgrade?.let { " -> ${it.range.roundToInt()}" } ?: ""),
+    text("Range ${tower.range.roundToInt()}" + (upgrade?.let { " -> ${it.range.roundToInt()}" } ?: "") +
+        if (simulation.elevatedTerrain) " / H${tower.height}" else "",
         922f, 263f, 0.86f, MUTED)
     text("Rate ${formatRate(tower.attackIntervalTicks)}" + (upgrade?.let { " -> ${formatRate(it.attackIntervalTicks)}" } ?: "") + " shots/s",
         922f, 241f, 0.83f, MUTED)

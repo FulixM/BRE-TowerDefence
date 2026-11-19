@@ -82,6 +82,7 @@ class DefenseScreen(
     private var pendingMap = simulation.battleMap
     private var pendingDifficulty = simulation.difficulty
     private var pendingSeed = simulation.seed
+    private var pendingElevatedTerrain = simulation.elevatedTerrain
     private var pendingMode = simulation.mode
     private var pendingModule = simulation.tremorModule
     private var pendingRailModule = simulation.railModule
@@ -390,10 +391,12 @@ class DefenseScreen(
         if (!clearCheckpoint()) return
         val research = if (ResearchLoadout.appliesTo(simulation.mode, simulation.seed)) profile.research.loadout
             else ResearchLoadout.EMPTY
-        if (simulation.fieldRank != profile.rank || simulation.research != research) {
+        val elevated = simulation.elevatedTerrain || simulation.mode == MissionMode.CAMPAIGN && simulation.seed == null
+        if (simulation.fieldRank != profile.rank || simulation.research != research || simulation.elevatedTerrain != elevated) {
             simulation = GameSimulation(
                 simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank, simulation.tremorModule,
                 simulation.mode, simulation.railModule, research,
+                elevated,
             )
         } else simulation.restart()
         resetMissionInterface()
@@ -424,6 +427,7 @@ class DefenseScreen(
         pendingMap = simulation.battleMap
         pendingDifficulty = simulation.difficulty
         pendingSeed = simulation.seed
+        pendingElevatedTerrain = simulation.elevatedTerrain
         pendingMode = simulation.mode
         pendingModule = simulation.tremorModule
         pendingRailModule = if (profile.relayHunterUnlocked) simulation.railModule else RailModule.STANDARD
@@ -452,7 +456,7 @@ class DefenseScreen(
         return if (next == pendingSeed) 100000 + (next - 99999) % 900000 else next
     }
 
-    private fun pendingChallenge() = pendingSeed?.let { RemixChallenge(pendingMap, pendingDifficulty, it) }
+    private fun pendingChallenge() = pendingSeed?.let { RemixChallenge(pendingMap, pendingDifficulty, it, pendingElevatedTerrain) }
 
     private fun copyChallenge() {
         val challenge = pendingChallenge() ?: return
@@ -472,6 +476,7 @@ class DefenseScreen(
         pendingMap = challenge.map
         pendingDifficulty = challenge.difficulty
         pendingSeed = challenge.seed
+        pendingElevatedTerrain = challenge.elevatedTerrain
         setupFeedback = "Loaded ${challenge.code}"
         setupError = false
     }
@@ -509,7 +514,8 @@ class DefenseScreen(
         if (!clearCheckpoint()) return
         val railModule = if (profile.relayHunterUnlocked) pendingRailModule else RailModule.STANDARD
         simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule,
-            pendingMode, railModule, profile.research.loadout)
+            pendingMode, railModule, profile.research.loadout,
+            elevatedTerrain = pendingMode == MissionMode.CAMPAIGN && (pendingSeed == null || pendingElevatedTerrain))
         resetMissionInterface()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -692,9 +698,17 @@ class DefenseScreen(
                 selectMap = { if (pendingMode.supports(it, pendingSeed)) pendingMap = it },
                 selectDifficulty = { pendingDifficulty = it },
                 toggleRemix = {
-                    if (pendingMode == MissionMode.CAMPAIGN) pendingSeed = if (pendingSeed == null) newSeed() else null
+                    if (pendingMode == MissionMode.CAMPAIGN) {
+                        pendingSeed = if (pendingSeed == null) newSeed() else null
+                        pendingElevatedTerrain = true
+                    }
                 },
-                reroll = { if (pendingMode == MissionMode.CAMPAIGN) pendingSeed = newSeed() },
+                reroll = {
+                    if (pendingMode == MissionMode.CAMPAIGN) {
+                        pendingSeed = newSeed()
+                        pendingElevatedTerrain = true
+                    }
+                },
                 toggleQuick = ::toggleQuickMission,
                 cycleModule = ::cycleModule,
                 toggleRailModule = {

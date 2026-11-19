@@ -58,7 +58,7 @@ class CampaignResearchTest {
         assertEquals(230, game.gold)
         assertTrue(game.buildTower(TowerType.RAIL, 150.0, 230.0).success)
         val rail = game.towers.single()
-        assertEquals(223.0, rail.range)
+        assertEquals(223.0 * 0.94, rail.range, 1e-8)
         assertEquals(94.76, rail.damage, 1e-8)
         assertEquals(112L, rail.attackIntervalTicks)
 
@@ -84,8 +84,8 @@ class CampaignResearchTest {
         var value = ""
         val saves = MissionSaves({ value }, { value = it })
         saves.save(assertNotNull(game.checkpoint()))
-        // A wave-zero v3 checkpoint has the same layout before the four v4 research integers and CRC.
-        val payload = Base64.getDecoder().decode(value).dropLast(20).toByteArray()
+        // A wave-zero v3 checkpoint has the same layout before the four v4 research integers, v5 terrain flag, and CRC.
+        val payload = Base64.getDecoder().decode(value).dropLast(21).toByteArray()
         ByteBuffer.wrap(payload).putInt(3)
         val checksum = CRC32().apply { update(payload) }.value.toInt()
         value = Base64.getEncoder().encodeToString(payload + ByteBuffer.allocate(4).putInt(checksum).array())

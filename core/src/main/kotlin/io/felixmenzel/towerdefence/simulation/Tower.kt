@@ -13,7 +13,9 @@ class Tower(
     val tremorModule: TremorModule = TremorModule.STANDARD,
     val railModule: RailModule = RailModule.STANDARD,
     private val researchReloadFactor: Double = 1.0,
+    private val terrain: BattleTerrain = BattleTerrain.FLAT,
 ) {
+    val height = terrain.heightAt(x, y)
     private val initialRange = range
     private val initialDamage = damage
     private val initialAttackInterval = attackIntervalTicks
@@ -96,7 +98,7 @@ class Tower(
             TargetPriority.NEAREST -> compareBy<Enemy>({ distanceSquaredTo(it) }, { it.id })
         }
         return enemies.asSequence()
-            .filter { it.isAlive && !it.hasReachedGoal && distanceSquaredTo(it) <= range * range }
+            .filter { it.canBeHit && inRange(it) }
             .minWithOrNull(comparator)
     }
 
@@ -112,7 +114,7 @@ class Tower(
         }
         val hits = when (type) {
             TowerType.CANNON, TowerType.TREMOR -> enemies.filter { it.canBeHit && within(it, target, impactRadius) }
-            TowerType.INFERNO -> enemies.filter { it.canBeHit && distanceSquaredTo(it) <= range * range }
+            TowerType.INFERNO -> enemies.filter { it.canBeHit && inRange(it) }
             TowerType.ARC -> chainFrom(target, enemies)
             else -> listOf(target)
         }
@@ -153,6 +155,8 @@ class Tower(
         val dy = enemy.y - source.y
         return dx * dx + dy * dy
     }
+
+    private fun inRange(enemy: Enemy) = terrain.canReach(x, y, height, range, enemy.x, enemy.y)
 
     private fun distanceSquaredTo(enemy: Enemy): Double {
         val dx = enemy.x - x
