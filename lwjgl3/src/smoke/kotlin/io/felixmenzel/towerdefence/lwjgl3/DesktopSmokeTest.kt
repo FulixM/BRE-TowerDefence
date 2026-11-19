@@ -19,6 +19,7 @@ import io.felixmenzel.towerdefence.Main
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.CannonSpecialization
+import io.felixmenzel.towerdefence.simulation.FieldProfile
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.MissionMode
 import io.felixmenzel.towerdefence.simulation.RailModule
@@ -400,8 +401,34 @@ object DesktopSmokeTest {
                     click(150f, 230f + DefenseScreen.BOARD_Y)
                     val rail = simulation.towers.single()
                     check(rail.railModule == RailModule.RELAY_HUNTER && rail.attackIntervalTicks == 143L)
+                }
+                322 -> key(Input.Keys.M)
+                323 -> click(707f, 547f) // Open the Workshop.
+                324 -> {
+                    val profile = privateField<FieldProfile>(screen, "profile")
+                    check(profile.research.available == 8)
+                    click(454f, 425f) // Buy Firepower rank 1.
+                    check(profile.research.available == 7 && profile.research.loadout.firepower == 1)
+                    check(simulation.research.firepower == 0)
+                    writeScreenshot("-workshop")
+                    game.dispose()
+                    game = Main(PROFILE_NAME)
+                    createGame()
+                }
+                325 -> {
+                    val profile = privateField<FieldProfile>(screen, "profile")
+                    check(profile.research.loadout.firepower == 1)
+                    click(332f, 293f) // Resume the checkpoint with its original research snapshot.
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.research.firepower == 0)
+                    key(Input.Keys.R)
+                }
+                326 -> {
+                    key(Input.Keys.ENTER)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.research.firepower == 1)
                     screenshotWritten = true
-                    println("Desktop smoke passed: controls, rendering, mission and Remix settings, progression, mission report, checkpoint reload, optional elites, Quick mission, Cannon specialization, and the persistent Rail workshop unlock.")
+                    println("Desktop smoke passed: controls, rendering, mission settings, checkpoint reload, tower modules, and campaign workshop research.")
                     Gdx.app.exit()
                 }
             }

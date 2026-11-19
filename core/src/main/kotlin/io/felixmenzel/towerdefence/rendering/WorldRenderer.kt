@@ -673,7 +673,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             simulation.gold >= type.cost &&
             (simulation.state == GameState.PREPARING || simulation.state == GameState.RUNNING)
         val color = if (valid) HEALTH else CORAL
-        drawRange(x, y, type.baseRange.toFloat(), color)
+        drawRange(x, y, simulation.research.rangeFor(type).toFloat(), color)
         shapes.setColor(color.r, color.g, color.b, 0.25f)
         hexagon(x, y, 22f)
         ring(x, y, 23f, 2f, color, 0.8f)

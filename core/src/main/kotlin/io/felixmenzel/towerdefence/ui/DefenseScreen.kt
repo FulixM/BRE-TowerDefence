@@ -21,6 +21,9 @@ import io.felixmenzel.towerdefence.simulation.MissionSaves
 import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.RemixChallenge
 import io.felixmenzel.towerdefence.simulation.RemixRecords
+import io.felixmenzel.towerdefence.simulation.ResearchLoadout
+import io.felixmenzel.towerdefence.simulation.ResearchProgress
+import io.felixmenzel.towerdefence.simulation.ResearchTrack
 import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
@@ -44,7 +47,8 @@ class DefenseScreen(
     private val profile: FieldProfile = FieldProfile(),
     private val records: RemixRecords = RemixRecords(),
     private val saves: MissionSaves = MissionSaves(),
-    private val persistResult: ((Int, Pair<String, String>?, Boolean) -> Unit)? = null,
+    private val persistResearch: (ResearchProgress) -> Unit = {},
+    private val persistResult: ((Int, Pair<String, String>?, Boolean, ResearchProgress) -> Unit)? = null,
 ) : KtxScreen {
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(WIDTH, HEIGHT, camera)
@@ -53,7 +57,7 @@ class DefenseScreen(
     private val hud = HudCanvas(fonts)
     private val worldProjection = Matrix4()
     private val pointer = Vector2()
-    private var simulation = GameSimulation(fieldRank = profile.rank)
+    private var simulation = GameSimulation(fieldRank = profile.rank, research = profile.research.loadout)
     private var startupMission = readSavedMission()
     private var hasCheckpoint = startupMission != null
     private var checkpointDirty = false
@@ -62,6 +66,7 @@ class DefenseScreen(
     private var profileSaveFailed = false
     private var newRemixBest = false
     private var newRelayHunter = false
+    private var gainedResearch = 0
     private val loop = FixedStepLoop { simulation.update() }
     private var selectedTowerId: Long? = null
     private var buildType: TowerType? = null
@@ -71,6 +76,8 @@ class DefenseScreen(
     private var enemyGuide = false
     private var reportOpen = false
     private var missionSetup = false
+    private var workshopOpen = false
+    private var workshopMessage = ""
     private var missionLaunchConfirmation = false
     private var pendingMap = simulation.battleMap
     private var pendingDifficulty = simulation.difficulty
@@ -112,6 +119,10 @@ class DefenseScreen(
             }
             if (enemyGuide) {
                 if (keycode == Input.Keys.ESCAPE || keycode == Input.Keys.G) closeEnemyGuide()
+                return true
+            }
+            if (workshopOpen) {
+                if (keycode == Input.Keys.ESCAPE) workshopOpen = false
                 return true
             }
             if (missionSetup) {
@@ -312,6 +323,7 @@ class DefenseScreen(
         try {
             val persist = persistResult
             val relayHunter = profile.relayHunterAfterMission(simulation)
+            val research = profile.research.afterMission(simulation)
             if (persist == null) {
                 check(clearCheckpoint())
                 resultXp = profile.award(simulation.state, simulation.wave)
@@ -319,12 +331,13 @@ class DefenseScreen(
             } else {
                 val total = profile.totalAfterMission(simulation.state, simulation.wave)
                 val best = records.improvedRecord(simulation)
-                persist(total, best, relayHunter)
+                persist(total, best, relayHunter, research)
                 hasCheckpoint = false
                 resultXp = profile.applyTotal(total)
                 newRemixBest = best != null
             }
             newRelayHunter = profile.applyRelayHunterUnlock(relayHunter)
+            gainedResearch = profile.applyResearch(research)
         } catch (failure: RuntimeException) {
             Gdx.app.error("Profile", "Unable to save the mission result", failure)
             profileSaveFailed = true
@@ -375,10 +388,12 @@ class DefenseScreen(
 
     private fun restart() {
         if (!clearCheckpoint()) return
-        if (simulation.fieldRank != profile.rank) {
+        val research = if (ResearchLoadout.appliesTo(simulation.mode, simulation.seed)) profile.research.loadout
+            else ResearchLoadout.EMPTY
+        if (simulation.fieldRank != profile.rank || simulation.research != research) {
             simulation = GameSimulation(
                 simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank, simulation.tremorModule,
-                simulation.mode, simulation.railModule,
+                simulation.mode, simulation.railModule, research,
             )
         } else simulation.restart()
         resetMissionInterface()
@@ -392,6 +407,8 @@ class DefenseScreen(
         profileSaveFailed = false
         newRemixBest = false
         newRelayHunter = false
+        gainedResearch = 0
+        workshopOpen = false
         loop.reset()
         paused = false
         doubleSpeed = false
@@ -472,10 +489,27 @@ class DefenseScreen(
         }
     }
 
+    private fun updateResearch(updated: ResearchProgress, message: String) {
+        workshopMessage = try {
+            persistResearch(updated)
+            profile.applyResearch(updated)
+            message
+        } catch (failure: RuntimeException) {
+            Gdx.app.error("Profile", "Unable to save workshop research", failure)
+            "Could not save this change."
+        }
+    }
+
+    private fun buyResearch(track: ResearchTrack) {
+        val updated = profile.research.buy(track) ?: return
+        updateResearch(updated, "${track.title} upgraded for future Classic missions.")
+    }
+
     private fun launchMission() {
         if (!clearCheckpoint()) return
         val railModule = if (profile.relayHunterUnlocked) pendingRailModule else RailModule.STANDARD
-        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule, pendingMode, railModule)
+        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule,
+            pendingMode, railModule, profile.research.loadout)
         resetMissionInterface()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -629,6 +663,14 @@ class DefenseScreen(
     }
 
     private fun HudCanvas.drawModal() {
+        if (workshopOpen) {
+            drawWorkshop(profile.research, workshopMessage,
+                buy = ::buyResearch,
+                reset = { updateResearch(profile.research.resetUpgrades(), "Research points refunded.") },
+                back = { workshopOpen = false },
+            )
+            return
+        }
         startupMission?.let {
             drawSavedMission(it)
             return
@@ -644,7 +686,7 @@ class DefenseScreen(
         if (missionSetup && !missionLaunchConfirmation) {
             drawMissionSetup(
                 pendingMap, pendingDifficulty, pendingSeed, pendingMode,
-                pendingModule, profile.rank, pendingRailModule, profile.relayHunterUnlocked,
+                pendingModule, profile.rank, pendingRailModule, profile.relayHunterUnlocked, profile.research,
                 if (pendingMode == MissionMode.QUICK) records.quickBest(pendingDifficulty) else pendingChallenge()?.let(records::best),
                 setupFeedback, setupError,
                 selectMap = { if (pendingMode.supports(it, pendingSeed)) pendingMap = it },
@@ -660,6 +702,10 @@ class DefenseScreen(
                         RailModule.STANDARD -> RailModule.RELAY_HUNTER
                         RailModule.RELAY_HUNTER -> RailModule.STANDARD
                     }
+                },
+                openWorkshop = {
+                    workshopMessage = ""
+                    workshopOpen = true
                 },
                 copyCode = ::copyChallenge,
                 importCode = ::importChallenge,
@@ -716,6 +762,7 @@ class DefenseScreen(
             val unlockLabel = unlocks.joinToString()
             text(if (unlockLabel.isEmpty()) xpLabel else "$xpLabel  /  Unlocked $unlockLabel",
                 182f, 336f, 0.92f, GOLD, 636f)
+            if (gainedResearch > 0) text("+$gainedResearch research / open Workshop in Mission Setup", 182f, 252f, 0.78f, CYAN)
             if (newRemixBest) {
                 val mode = if (simulation.mode == MissionMode.QUICK) "Quick mission" else "Remix"
                 text("New local best / $mode", 182f, 252f, 0.87f, CYAN)

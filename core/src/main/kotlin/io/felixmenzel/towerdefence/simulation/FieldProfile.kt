@@ -4,9 +4,12 @@ package io.felixmenzel.towerdefence.simulation
 class FieldProfile(
     initialXp: Int = 0,
     relayHunterUnlocked: Boolean = false,
+    research: ResearchProgress = ResearchProgress(),
     private val saveXp: (Int) -> Unit = {},
 ) {
     var relayHunterUnlocked: Boolean = relayHunterUnlocked
+        private set
+    var research = research
         private set
     var xp: Int = initialXp.coerceAtLeast(0)
         private set
@@ -33,6 +36,12 @@ class FieldProfile(
         val earned = total - xp
         xp = total
         return earned
+    }
+
+    internal fun applyResearch(updated: ResearchProgress): Int {
+        val gained = updated.earned - research.earned
+        research = updated
+        return gained
     }
 
     internal fun relayHunterAfterMission(game: GameSimulation): Boolean =

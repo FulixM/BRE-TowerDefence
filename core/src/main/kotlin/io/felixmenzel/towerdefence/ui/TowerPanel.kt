@@ -66,9 +66,10 @@ private fun HudCanvas.towerCard(
 
 private fun HudCanvas.buildPanel(type: TowerType, simulation: GameSimulation, cancelPlacement: () -> Unit) {
     text("PLACING / ${type.title.uppercase()}", 922f, 313f, 0.95f, towerColor(type))
-    text("Cost ${type.cost}  /  Range ${type.baseRange.roundToInt()}", 922f, 285f, 0.9f, WHITE)
-    val interval = simulation.railModule.maxAttackInterval(type)
-    text("${type.baseDamage.roundToInt()} damage / ${formatRate(interval)} shots per sec", 922f, 262f, 0.86f, MUTED)
+    text("Cost ${type.cost}  /  Range ${simulation.research.rangeFor(type).roundToInt()}", 922f, 285f, 0.9f, WHITE)
+    val interval = (type.baseAttackIntervalTicks * simulation.railModule.intervalFactor(type) *
+        simulation.research.reloadFactor).toLong().coerceAtLeast(1L)
+    text("${formatDamage(simulation.research.damageFor(type))} damage / ${formatRate(interval)} shots per sec", 922f, 262f, 0.86f, MUTED)
     val description = when {
         type == TowerType.TREMOR -> with(simulation.tremorModule) {
             "$title / ${radius.toInt()} radius / $slowPercent% slow"
