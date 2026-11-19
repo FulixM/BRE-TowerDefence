@@ -66,6 +66,7 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 | G | Read the enemy guide and pause the current wave |
 | E | Arm or disarm the selected tower as the wave recorder |
 | U | Upgrade selected tower |
+| X | Overdrive the selected tower during a Classic wave, once per wave |
 | Z / Undo | Refund the last untouched build placed during preparation, before the next wave starts |
 | T | Cycle the selected tower’s target priority |
 | Space | Start the next wave; pause/resume during combat |
@@ -73,6 +74,8 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 | F | Toggle 1x / 2x speed |
 | Right-click / Esc | Cancel placement or selection; Esc otherwise pauses |
 | R | Request restart; confirm with Enter/R or cancel with Esc |
+
+During a Classic wave, select a tower and activate **Overdrive [X]** to halve its reload times for five seconds. Each wave has one charge, so save it for a packed group or an exposed boss.
 
 Before starting a wave, select a tower and use **Record [E]**. Its shots replay at the same times and positions in the next wave, even if you sell the tower. Enemies can move past a point before the echo fires. Purple rings mark upcoming impacts.
 

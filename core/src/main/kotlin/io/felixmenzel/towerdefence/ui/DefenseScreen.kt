@@ -189,6 +189,7 @@ class DefenseScreen(
                     else togglePause()
                 }
                 Input.Keys.Z -> if (!paused) undoLastBuild()
+                Input.Keys.X -> if (!paused && simulation.overdriveEnabled && simulation.state == GameState.RUNNING) activateOverdrive()
                 Input.Keys.U -> if (!paused) selectedTower()?.let { report(simulation.upgradeTower(it.id)) }
                 Input.Keys.T -> if (!paused) selectedTower()?.let { report(simulation.cycleTargetPriority(it.id)) }
                 Input.Keys.F -> if (!paused) doubleSpeed = !doubleSpeed
@@ -385,6 +386,12 @@ class DefenseScreen(
         buildType = type
         selectedTowerId = null
         notify("${type.title}: click free ground to build. Right-click or Esc cancels.")
+    }
+
+    private fun activateOverdrive() {
+        val tower = selectedTower()
+        if (tower == null) notify("Select a tower for Overdrive", true)
+        else report(simulation.activateOverdrive(tower.id))
     }
 
     private fun undoLastBuild() {
@@ -621,11 +628,26 @@ class DefenseScreen(
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
         val hasSwitch = simulation.inactivePath != null
-        val startWidth = if (hasSwitch) 188f else 310f
-        button(nextLabel, 565f, 20f, startWidth, 43f, preparing, CYAN, scale = if (hasSwitch) 0.77f else 0.90f) {
+        val showOverdrive = simulation.overdriveEnabled && simulation.state == GameState.RUNNING
+        val startWidth = when {
+            showOverdrive -> 150f
+            hasSwitch -> 188f
+            else -> 310f
+        }
+        button(nextLabel, 565f, 20f, startWidth, 43f, preparing, CYAN, scale = if (hasSwitch || showOverdrive) 0.77f else 0.90f) {
             startWave()
         }
-        if (hasSwitch) {
+        if (showOverdrive) {
+            val seconds = (simulation.overdriveTicksLeft + GameSimulation.UPS - 1) / GameSimulation.UPS
+            val label = when {
+                simulation.canActivateOverdrive && selectedTower() == null -> "Select tower [X]"
+                simulation.canActivateOverdrive -> "Overdrive [X]"
+                seconds > 0 -> "Overdrive / ${seconds}s"
+                else -> "Overdrive spent"
+            }
+            button(label, 725f, 20f, 150f, 43f, simulation.canActivateOverdrive && selectedTower() != null,
+                accent = GOLD, scale = 0.79f, action = ::activateOverdrive)
+        } else if (hasSwitch) {
             val lock = if (simulation.useUpperRoute) "Upper" else "Lower"
             button("$lock lock [V]", 761f, 20f, 114f, 43f, preparing, CYAN, scale = 0.78f) {
                 report(simulation.switchRoute())

@@ -102,7 +102,11 @@ class Tower(
             .minWithOrNull(comparator)
     }
 
-    fun update(currentTick: Long, enemies: List<Enemy>): Shot? {
+    internal fun beginOverdrive(tick: Long) {
+        if (nextAttackTick > tick) nextAttackTick = tick + (nextAttackTick - tick + 1L) / 2L
+    }
+
+    fun update(currentTick: Long, enemies: List<Enemy>, overdrive: Boolean = false): Shot? {
         if (currentTick < nextAttackTick) return null
         val target = selectTarget(enemies) ?: return null
 
@@ -123,7 +127,8 @@ class Tower(
             applyTowerHit(type, enemy, damage, index, tremorModule, railModule)
         }
         val hitEnemyIds = hits.map { it.id }
-        nextAttackTick = currentTick + attackIntervalTicks
+        val interval = attackIntervalTicks
+        nextAttackTick = currentTick + if (overdrive) (interval + 1L) / 2L else interval
         return Shot(
             x, y, target.x, target.y, type, currentTick, hitEnemyIds,
             arcJumps = if (type == TowerType.ARC) hits.drop(1).map { Waypoint(it.x, it.y) } else emptyList(),

@@ -93,6 +93,15 @@ class GameSimulation(
     private var nextEnemyId = 1L
     private var nextTowerId = 1L
     private var lastBuildUndoable = false
+    val overdriveEnabled = mode == MissionMode.CAMPAIGN && seed == null
+    private var overdriveTarget: Long? = null
+    private var overdriveUntilTick = 0L
+    val canActivateOverdrive: Boolean
+        get() = overdriveEnabled && state == GameState.RUNNING && overdriveUntilTick == 0L
+    val overdriveTicksLeft: Long
+        get() = if (state == GameState.RUNNING && overdriveTarget != null) (overdriveUntilTick - tick).coerceAtLeast(0L) else 0L
+    val overdriveTowerId: Long?
+        get() = overdriveTarget.takeIf { state == GameState.RUNNING && tick < overdriveUntilTick }
 
     val lastBuildRefund: Int?
         get() = undoableTower?.type?.cost
@@ -131,8 +140,9 @@ class GameSimulation(
             echo.reset()
             return
         }
+        val boosted = overdriveTarget.takeIf { tick <= overdriveUntilTick }
         for (tower in mutableTowers) {
-            val shot = tower.update(tick, mutableEnemies) ?: continue
+            val shot = tower.update(tick, mutableEnemies, overdrive = tower.id == boosted) ?: continue
             mutableShots.add(shot)
             echo.record(tower, shot)
         }
@@ -162,6 +172,8 @@ class GameSimulation(
     fun startWave(): ActionResult {
         if (state != GameState.PREPARING) return ActionResult(false, "Finish the current wave first")
         lastBuildUndoable = false
+        overdriveTarget = null
+        overdriveUntilTick = 0L
         wave++
         eliteActive = eliteOffered
         eliteOffered = false
@@ -173,6 +185,16 @@ class GameSimulation(
         nextSpawnTick = tick + 1L
         state = GameState.RUNNING
         return ActionResult(true, "Wave $wave incoming")
+    }
+
+    fun activateOverdrive(towerId: Long): ActionResult {
+        if (!overdriveEnabled || state != GameState.RUNNING) return ActionResult(false, "Overdrive is available during Classic waves")
+        if (!canActivateOverdrive) return ActionResult(false, "Overdrive already used this wave")
+        val tower = mutableTowers.firstOrNull { it.id == towerId } ?: return ActionResult(false, "Select a tower for Overdrive")
+        overdriveTarget = towerId
+        overdriveUntilTick = tick + OVERDRIVE_SECONDS * UPS
+        tower.beginOverdrive(tick)
+        return ActionResult(true, "${tower.type.title} overdrive / ${OVERDRIVE_SECONDS}s at double fire rate", towerId)
     }
 
     fun toggleElite(): ActionResult {
@@ -254,6 +276,7 @@ class GameSimulation(
         invalidateBuildUndo(id)
         mutableTowers.remove(tower)
         echo.onTowerSold(id)
+        if (overdriveTarget == id) overdriveTarget = null
         return ActionResult(true, "Sold for ${tower.sellValue} gold")
     }
 
@@ -349,6 +372,8 @@ class GameSimulation(
         nextEnemyId = 1L
         nextTowerId = 1L
         lastBuildUndoable = false
+        overdriveTarget = null
+        overdriveUntilTick = 0L
         spawnedThisWave = 0
         nextSpawnTick = 0L
     }
@@ -387,6 +412,7 @@ class GameSimulation(
 
     companion object {
         const val UPS = 60
+        const val OVERDRIVE_SECONDS = 5
         const val STEP_SECONDS = 1.0 / UPS
         const val WORLD_WIDTH = 900.0
         const val WORLD_HEIGHT = 560.0
