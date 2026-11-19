@@ -10,6 +10,7 @@ class Tower(
     attackIntervalTicks: Long,
     val id: Long = 0L,
     val type: TowerType = TowerType.RAPID,
+    val tremorModule: TremorModule = TremorModule.STANDARD,
 ) {
     private val initialRange = range
     private val initialDamage = damage
@@ -75,7 +76,7 @@ class Tower(
 
         val hits = when (type) {
             TowerType.CANNON, TowerType.TREMOR -> {
-                val radius = if (type == TowerType.TREMOR) TREMOR_RADIUS else SPLASH_RADIUS
+                val radius = if (type == TowerType.TREMOR) tremorModule.radius else SPLASH_RADIUS
                 enemies.filter { it.canBeHit && within(it, target, radius) }
             }
             TowerType.INFERNO -> enemies.filter { it.canBeHit && distanceSquaredTo(it) <= range * range }
@@ -84,14 +85,19 @@ class Tower(
         }
 
         for ((index, enemy) in hits.withIndex()) {
-            applyTowerHit(type, enemy, damage, index)
+            applyTowerHit(type, enemy, damage, index, tremorModule)
         }
         val hitEnemyIds = hits.map { it.id }
         nextAttackTick = currentTick + attackIntervalTicks
         return Shot(
             x, y, target.x, target.y, type, currentTick, hitEnemyIds,
             arcJumps = if (type == TowerType.ARC) hits.drop(1).map { Waypoint(it.x, it.y) } else emptyList(),
-            areaRadius = if (type == TowerType.INFERNO) range else 0.0,
+            areaRadius = when (type) {
+                TowerType.INFERNO -> range
+                TowerType.TREMOR -> tremorModule.radius
+                else -> 0.0
+            },
+            tremorModule = tremorModule,
         )
     }
 
@@ -127,7 +133,6 @@ class Tower(
     companion object {
         const val MAX_LEVEL = 3
         const val SPLASH_RADIUS = 58.0
-        const val TREMOR_RADIUS = 44.0
         private const val ARC_JUMP_RANGE = 76.0
 
     }
@@ -154,6 +159,18 @@ enum class TowerType(
     TREMOR("Tremor", 135, "Slows groups around the impact", 128.0, 10.0, 45L, requiredRank = 2),
 }
 
+enum class TremorModule(val title: String, val radius: Double, val speedFactor: Double) {
+    STANDARD("Standard", 44.0, 0.70),
+    WIDE("Wide", 60.0, 0.80),
+    FOCUSED("Focused", 32.0, 0.55);
+
+    val slowPercent: Int get() = ((1.0 - speedFactor) * 100).roundToInt()
+
+    companion object {
+        const val REQUIRED_RANK = 3
+    }
+}
+
 /** A visual trace of an already resolved hit, not a second source of damage. */
 data class Shot(
     val fromX: Double,
@@ -166,6 +183,7 @@ data class Shot(
     val arcJumps: List<Waypoint> = emptyList(),
     val areaRadius: Double = 0.0,
     val isEcho: Boolean = false,
+    val tremorModule: TremorModule = TremorModule.STANDARD,
 )
 
 /** Exact next-level values, calculated by the same rules as the active tower stats. */
@@ -179,14 +197,20 @@ enum class TargetPriority(val title: String) {
 
 private val ARC_DAMAGE_FACTORS = doubleArrayOf(1.0, 0.65, 0.4)
 
-internal fun applyTowerHit(type: TowerType, enemy: Enemy, damage: Double, impactIndex: Int = 0) {
+internal fun applyTowerHit(
+    type: TowerType,
+    enemy: Enemy,
+    damage: Double,
+    impactIndex: Int = 0,
+    tremorModule: TremorModule = TremorModule.STANDARD,
+) {
     val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
     if (type == TowerType.SUNDER) enemy.takeShieldbreakingDamage(damage)
     else enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
     if (!enemy.isAlive) return
     when (type) {
         TowerType.FROST -> enemy.applySlow(0.55, 1.5)
-        TowerType.TREMOR -> enemy.applySlow(0.70, 1.1)
+        TowerType.TREMOR -> enemy.applySlow(tremorModule.speedFactor, 1.1)
         TowerType.VENOM -> enemy.applyPoison(damage, 3.0)
         TowerType.BEACON -> enemy.mark()
         else -> Unit

@@ -22,7 +22,9 @@ Use **Mission** to choose a route and difficulty. The mission screen previews th
 
 **Twin Locks** adds two tight turns in the middle of the route. The **Tremor** tower (`0`) slows groups around an impact and unlocks at field rank 2. Finished missions award profile XP for cleared waves, plus a victory bonus. The profile saves locally and carries over between missions.
 
-Choose **Remix** in mission setup to vary enemy order and spawn spacing. Reroll for a new seed, or retry a mission to keep its seed and timings.
+Choose **Remix** in mission setup to vary enemy order and spawn spacing. Reroll for a new seed, or retry a mission to keep its seed and timings. **Copy code** shares the map, difficulty and seed. **Paste Remix code** loads those settings from the clipboard. The mission setup shows the local best for that code by waves cleared, then lives and kills.
+
+On **Twin Locks**, press **V** between waves to switch paths. Both routes remain reserved for enemies, and purple markers show the first recorded echo impact positions. At field rank 3, choose a **Tremor** module in mission setup. Wide covers a larger area with a weaker slow. Focused covers a smaller area with a stronger slow. The chosen module applies to the whole mission, including recorded echoes.
 
 Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive 15 waves to win. The final five preview named formations built around shields, armor, regeneration and mixed assaults.
 

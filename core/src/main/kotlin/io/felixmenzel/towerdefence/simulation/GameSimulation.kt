@@ -8,8 +8,16 @@ class GameSimulation(
     val difficulty: Difficulty = Difficulty.NORMAL,
     val seed: Int? = null,
     val fieldRank: Int = 1,
+    tremorModule: TremorModule = TremorModule.STANDARD,
 ) {
-    val path: List<Waypoint> = battleMap.path
+    val tremorModule = if (fieldRank >= TremorModule.REQUIRED_RANK) tremorModule else TremorModule.STANDARD
+    var useUpperRoute = false
+        private set
+    val path: List<Waypoint> get() = if (useUpperRoute) checkNotNull(battleMap.alternatePath) else battleMap.path
+    val inactivePath: List<Waypoint>? get() = if (useUpperRoute) battleMap.path else battleMap.alternatePath
+    val challenge: RemixChallenge? = seed?.takeIf { it in RemixChallenge.SEED_RANGE }?.let {
+        RemixChallenge(battleMap, difficulty, it)
+    }
     private val mutableEnemies = mutableListOf<Enemy>()
     private val mutableTowers = mutableListOf<Tower>()
     private val mutableShots = mutableListOf<Shot>()
@@ -101,6 +109,13 @@ class GameSimulation(
         return ActionResult(true, "Wave $wave incoming")
     }
 
+    fun switchRoute(): ActionResult {
+        if (battleMap.alternatePath == null) return ActionResult(false, "This map has a single route")
+        if (state != GameState.PREPARING) return ActionResult(false, "Switch routes between waves")
+        useUpperRoute = !useUpperRoute
+        return ActionResult(true, if (useUpperRoute) "Next wave uses the upper lock" else "Next wave uses the lower lock")
+    }
+
     fun isUnlocked(type: TowerType): Boolean = fieldRank >= type.requiredRank
 
     fun buildTower(type: TowerType, x: Double, y: Double): ActionResult {
@@ -108,7 +123,8 @@ class GameSimulation(
         if (!isUnlocked(type)) return ActionResult(false, "${type.title} unlocks at field rank ${type.requiredRank}")
         placementError(x, y)?.let { return ActionResult(false, it) }
         if (gold < type.cost) return ActionResult(false, "Need ${type.cost} gold for ${type.title}")
-        val tower = Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks, nextTowerId++, type)
+        val tower = Tower(x, y, type.baseRange, type.baseDamage, type.baseAttackIntervalTicks,
+            nextTowerId++, type, if (type == TowerType.TREMOR) tremorModule else TremorModule.STANDARD)
         mutableTowers += tower
         gold -= type.cost
         return ActionResult(true, "${type.title} built", tower.id)
@@ -157,7 +173,7 @@ class GameSimulation(
         if (x < BUILD_MARGIN || x > WORLD_WIDTH - BUILD_MARGIN || y < BUILD_MARGIN || y > WORLD_HEIGHT - BUILD_MARGIN) {
             return "Keep the tower inside the map"
         }
-        for ((start, end) in path.zipWithNext()) {
+        for ((start, end) in battleMap.buildSegments) {
             if (distanceToSegmentSquared(x, y, start, end) < PATH_CLEARANCE * PATH_CLEARANCE) return "Keep the route clear"
         }
         if (mutableTowers.any { (it.x - x) * (it.x - x) + (it.y - y) * (it.y - y) < TOWER_SPACING * TOWER_SPACING }) {
@@ -180,6 +196,7 @@ class GameSimulation(
         gold = difficulty.startingGold
         lives = difficulty.startingLives
         wave = 0
+        useUpperRoute = false
         kills = 0
         leakedEnemies = 0
         state = GameState.PREPARING

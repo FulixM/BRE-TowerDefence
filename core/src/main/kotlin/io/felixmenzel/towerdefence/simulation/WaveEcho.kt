@@ -17,6 +17,8 @@ internal class WaveEcho {
     fun nextShot(preparing: Boolean): Shot? =
         (if (preparing) recording.firstOrNull() else playback.getOrNull(cursor))?.shot
 
+    fun recordedImpacts(): Sequence<Shot> = recording.asSequence().take(8).map { it.shot }
+
     fun toggleTower(id: Long): Boolean {
         armedTowerId = if (armedTowerId == id) null else id
         return armedTowerId != null
@@ -63,7 +65,7 @@ internal class WaveEcho {
         fun resolve(tick: Long, enemies: List<Enemy>): Shot {
             val hitIds = when (shot.type) {
                 TowerType.CANNON -> hitArea(enemies, shot.toX, shot.toY, Tower.SPLASH_RADIUS)
-                TowerType.TREMOR -> hitArea(enemies, shot.toX, shot.toY, Tower.TREMOR_RADIUS)
+                TowerType.TREMOR -> hitArea(enemies, shot.toX, shot.toY, shot.tremorModule.radius)
                 TowerType.INFERNO -> hitArea(enemies, shot.fromX, shot.fromY, shot.areaRadius)
                 else -> buildList {
                     val impacts = listOf(Waypoint(shot.toX, shot.toY)) + shot.arcJumps
@@ -83,7 +85,7 @@ internal class WaveEcho {
         private fun hitArea(enemies: List<Enemy>, x: Double, y: Double, radius: Double): List<Long> = buildList {
             for (enemy in enemies) {
                 if (enemy.canBeHit && distanceSquared(enemy, x, y) <= radius * radius) {
-                    applyTowerHit(shot.type, enemy, damage * DAMAGE_FACTOR)
+                    applyTowerHit(shot.type, enemy, damage * DAMAGE_FACTOR, tremorModule = shot.tremorModule)
                     add(enemy.id)
                 }
             }

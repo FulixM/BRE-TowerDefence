@@ -16,6 +16,9 @@ import io.felixmenzel.towerdefence.simulation.FieldProfile
 import io.felixmenzel.towerdefence.simulation.FixedStepLoop
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
+import io.felixmenzel.towerdefence.simulation.RemixChallenge
+import io.felixmenzel.towerdefence.simulation.RemixRecords
+import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.simulation.Tower
 import io.felixmenzel.towerdefence.simulation.TowerType
 import io.felixmenzel.towerdefence.simulation.Waves
@@ -34,7 +37,10 @@ import ktx.app.KtxScreen
 import kotlin.random.Random
 
 /** Owns presentation and input; all game rules remain in GameSimulation. */
-class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScreen {
+class DefenseScreen(
+    private val profile: FieldProfile = FieldProfile(),
+    private val records: RemixRecords = RemixRecords(),
+) : KtxScreen {
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(WIDTH, HEIGHT, camera)
     private val fonts = ScreenFonts()
@@ -45,6 +51,7 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
     private var simulation = GameSimulation(fieldRank = profile.rank)
     private var resultXp: Int? = null
     private var profileSaveFailed = false
+    private var newRemixBest = false
     private val loop = FixedStepLoop { simulation.update() }
     private var selectedTowerId: Long? = null
     private var buildType: TowerType? = null
@@ -57,6 +64,9 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
     private var pendingMap = simulation.battleMap
     private var pendingDifficulty = simulation.difficulty
     private var pendingSeed = simulation.seed
+    private var pendingModule = simulation.tremorModule
+    private var setupFeedback = ""
+    private var setupError = false
     private var message = "Choose a tower, place it beside the route, then start wave 1."
     private var messageError = false
     private var messageTime = 0f
@@ -136,6 +146,7 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
                 Input.Keys.U -> if (!paused) selectedTower()?.let { report(simulation.upgradeTower(it.id)) }
                 Input.Keys.T -> if (!paused) selectedTower()?.let { report(simulation.cycleTargetPriority(it.id)) }
                 Input.Keys.F -> if (!paused) doubleSpeed = !doubleSpeed
+                Input.Keys.V -> if (!paused && simulation.inactivePath != null) report(simulation.switchRoute())
                 else -> return false
             }
             return true
@@ -181,6 +192,11 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
                 Gdx.app.error("Profile", "Unable to save mission XP", failure)
                 profileSaveFailed = true
                 0
+            }
+            try {
+                newRemixBest = records.submit(simulation)
+            } catch (failure: RuntimeException) {
+                Gdx.app.error("Profile", "Unable to save the Remix best", failure)
             }
         }
         viewport.apply()
@@ -240,10 +256,13 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
 
     private fun restart() {
         if (simulation.fieldRank != profile.rank) {
-            simulation = GameSimulation(simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank)
+            simulation = GameSimulation(
+                simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank, simulation.tremorModule,
+            )
         } else simulation.restart()
         resultXp = null
         profileSaveFailed = false
+        newRemixBest = false
         loop.reset()
         paused = false
         doubleSpeed = false
@@ -259,6 +278,9 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
         pendingMap = simulation.battleMap
         pendingDifficulty = simulation.difficulty
         pendingSeed = simulation.seed
+        pendingModule = simulation.tremorModule
+        setupFeedback = ""
+        setupError = false
         missionSetup = true
         missionLaunchConfirmation = false
         restartConfirmation = false
@@ -282,8 +304,36 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
         return if (next == pendingSeed) 100000 + (next - 99999) % 900000 else next
     }
 
+    private fun pendingChallenge() = pendingSeed?.let { RemixChallenge(pendingMap, pendingDifficulty, it) }
+
+    private fun copyChallenge() {
+        val challenge = pendingChallenge() ?: return
+        Gdx.app.clipboard.contents = challenge.code
+        setupFeedback = "Copied ${challenge.code}"
+        setupError = false
+    }
+
+    private fun importChallenge() {
+        val challenge = Gdx.app.clipboard.contents?.let(RemixChallenge::parse)
+        if (challenge == null) {
+            setupFeedback = "Clipboard does not contain a valid Remix code."
+            setupError = true
+            return
+        }
+        pendingMap = challenge.map
+        pendingDifficulty = challenge.difficulty
+        pendingSeed = challenge.seed
+        setupFeedback = "Loaded ${challenge.code}"
+        setupError = false
+    }
+
+    private fun cycleModule() {
+        val modules = TremorModule.entries
+        pendingModule = modules[(pendingModule.ordinal + 1) % modules.size]
+    }
+
     private fun launchMission() {
-        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank)
+        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank, pendingModule)
         restart()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -359,7 +409,17 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
         echoStatus?.let { text(it, 335f, 58f, 0.82f, ECHO) }
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
-        button(nextLabel, 565f, 20f, 310f, 43f, preparing, CYAN) { report(simulation.startWave()) }
+        val hasSwitch = simulation.inactivePath != null
+        val startWidth = if (hasSwitch) 188f else 310f
+        button(nextLabel, 565f, 20f, startWidth, 43f, preparing, CYAN, scale = if (hasSwitch) 0.77f else 0.90f) {
+            report(simulation.startWave())
+        }
+        if (hasSwitch) {
+            val lock = if (simulation.useUpperRoute) "Upper" else "Lower"
+            button("$lock lock [V]", 761f, 20f, 114f, 43f, preparing, CYAN, scale = 0.78f) {
+                report(simulation.switchRoute())
+            }
+        }
         text("1-9 / 0 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
         text("Space Wave/Pause   P Pause   F Speed", 922f, 36f, 0.75f, MUTED)
         val seedLabel = simulation.seed?.let { "  /  Seed $it" }.orEmpty()
@@ -398,10 +458,14 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
         if (missionSetup && !missionLaunchConfirmation) {
             drawMissionSetup(
                 pendingMap, pendingDifficulty, pendingSeed,
+                pendingModule, profile.rank, pendingChallenge()?.let(records::best), setupFeedback, setupError,
                 selectMap = { pendingMap = it },
                 selectDifficulty = { pendingDifficulty = it },
                 toggleRemix = { pendingSeed = if (pendingSeed == null) newSeed() else null },
                 reroll = { pendingSeed = newSeed() },
+                cycleModule = ::cycleModule,
+                copyCode = ::copyChallenge,
+                importCode = ::importChallenge,
                 launch = ::requestLaunch,
                 cancel = ::closeMissionSetup,
             )
@@ -446,9 +510,14 @@ class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScr
             text("${simulation.battleMap.title} / ${simulation.difficulty.title}   |   ${simulation.kills} defeated / ${simulation.leakedEnemies} escaped", 182f, 364f, 0.95f, CYAN, 636f)
             val xpLabel = if (profileSaveFailed) "Could not save XP" else "+${resultXp ?: 0} XP  /  Field rank ${profile.rank}"
             val unlocked = TowerType.entries.filter { it.requiredRank in (simulation.fieldRank + 1)..profile.rank }
-            val unlockLabel = unlocked.joinToString { it.title }
+            val unlocks = unlocked.map { it.title }.toMutableList()
+            if (simulation.fieldRank < TremorModule.REQUIRED_RANK && profile.rank >= TremorModule.REQUIRED_RANK) {
+                unlocks.add("Tremor modules")
+            }
+            val unlockLabel = unlocks.joinToString()
             text(if (unlockLabel.isEmpty()) xpLabel else "$xpLabel  /  Unlocked $unlockLabel",
                 182f, 336f, 0.92f, GOLD, 636f)
+            if (newRemixBest) text("New local Remix best", 182f, 252f, 0.87f, CYAN)
             button("Retry mission [Enter / R]", 182f, 267f, 300f, 52f, accent = CYAN) { restart() }
             button("Choose mission [M]", 502f, 267f, 300f, 52f) { openMissionSetup() }
         } else {
