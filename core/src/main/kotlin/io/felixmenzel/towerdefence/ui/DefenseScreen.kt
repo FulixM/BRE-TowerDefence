@@ -92,6 +92,7 @@ class DefenseScreen(
     private var message = "Choose a tower, place it beside the route, then start wave 1."
     private var messageError = false
     private var messageTime = 0f
+    private val shiftKeys = mutableSetOf<Int>()
     private val input = object : InputAdapter() {
         override fun touchDown(screenX: Int, screenY: Int, pointer: Int, button: Int): Boolean {
             if (button == Input.Buttons.RIGHT) {
@@ -110,7 +111,13 @@ class DefenseScreen(
             return false
         }
 
+        override fun keyUp(keycode: Int): Boolean = shiftKeys.remove(keycode)
+
         override fun keyDown(keycode: Int): Boolean {
+            if (keycode == Input.Keys.SHIFT_LEFT || keycode == Input.Keys.SHIFT_RIGHT) {
+                shiftKeys.add(keycode)
+                return true
+            }
             if (startupMission != null) {
                 if (keycode == Input.Keys.ENTER) continueMission()
                 return true
@@ -287,6 +294,7 @@ class DefenseScreen(
     }
 
     override fun hide() {
+        shiftKeys.clear()
         saveCheckpoint()
         if (Gdx.input.inputProcessor === input) Gdx.input.inputProcessor = null
     }
@@ -312,13 +320,16 @@ class DefenseScreen(
         val cursor = uiPoint(Gdx.input.x, Gdx.input.y)
         val onBoard = cursor != null && cursor.x in 0f..BOARD_WIDTH &&
             cursor.y in BOARD_Y..BOARD_Y + BOARD_HEIGHT && !isModal()
+        val tower = selectedTower()
+        val previewUpgrade = buildType == null && tower?.upgradeCost != null && !isModal() && isUpgradeHovered(cursor)
         worldProjection.set(camera.combined).translate(0f, BOARD_Y, 0f)
         renderer.render(
-            simulation, loop.interpolationAlpha, worldProjection, selectedTower(), buildType,
+            simulation, loop.interpolationAlpha, worldProjection, tower, buildType,
             if (onBoard) cursor.x.toDouble() else null,
             if (onBoard) (cursor.y - BOARD_Y).toDouble() else null,
+            previewUpgrade,
         )
-        drawInterface(cursor)
+        drawInterface(cursor, previewUpgrade)
     }
 
     private fun claimMissionResult() {
@@ -358,7 +369,7 @@ class DefenseScreen(
         if (type != null) {
             val result = simulation.buildTower(type, x, y)
             report(result)
-            if (result.success) {
+            if (result.success && !(simulation.gridPlacement && shiftKeys.isNotEmpty() && simulation.gold >= type.cost)) {
                 selectedTowerId = result.towerId
                 buildType = null
             }
@@ -530,6 +541,7 @@ class DefenseScreen(
     }
 
     override fun pause() {
+        shiftKeys.clear()
         saveCheckpoint()
         if (!isFinished() && startupMission == null) paused = true
         loop.reset()
@@ -552,7 +564,7 @@ class DefenseScreen(
     private fun isModal() = startupMission != null || paused || restartConfirmation || missionSetup ||
         enemyGuide || reportOpen || isFinished()
 
-    private fun drawInterface(cursor: Vector2?) = with(hud) {
+    private fun drawInterface(cursor: Vector2?, previewUpgrade: Boolean) = with(hud) {
         beginFrame(camera.combined, cursor)
         rect(0f, 640f, WIDTH, 80f, PANEL)
         rect(0f, 0f, WIDTH, 80f, PANEL)
@@ -571,7 +583,7 @@ class DefenseScreen(
         button("Restart [R]", 1063f, 660f, 113f, 40f) { restartConfirmation = true }
 
         drawTowerPanel(
-            simulation, selectedTower(), buildType,
+            simulation, selectedTower(), buildType, previewUpgrade,
             choose = ::choose,
             openEnemyGuide = { enemyGuide = true },
             cancelPlacement = { buildType = null },
