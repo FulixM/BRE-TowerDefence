@@ -16,6 +16,8 @@ class Enemy(
     val isBoss: Boolean = false,
     val isCommander: Boolean = false,
     private val escortCommander: Enemy? = null,
+    val isMarshalRelay: Boolean = false,
+    private val marshalRelays: List<Enemy>? = null,
 ) {
     private val path = path.toList()
 
@@ -38,7 +40,17 @@ class Enemy(
         private set
     private var nextWaypointIndex = 1
     val hasReachedGoal: Boolean get() = nextWaypointIndex >= path.size
-    val bossExposed: Boolean get() = isBoss && Bastion.windows.any { distanceTravelled in it }
+    val isMarshal: Boolean get() = marshalRelays != null
+    val supportingRelays: Sequence<Enemy> get() = marshalRelays.orEmpty().asSequence()
+        .filter { it.isAlive && !it.hasReachedGoal }
+    val bossExposed: Boolean get() = isBoss && if (isMarshal) {
+        supportingRelays.none() || Marshal.windows.any { distanceTravelled in it }
+    } else Bastion.windows.any { distanceTravelled in it }
+    private val bossDamageMultiplier: Double get() = when {
+        !isBoss || bossExposed -> 1.0
+        isMarshal -> Marshal.PROTECTED_DAMAGE_MULTIPLIER
+        else -> Bastion.PROTECTED_DAMAGE_MULTIPLIER
+    }
     var health = maxHealth
         private set
     val isAlive: Boolean get() = health > 0.0
@@ -117,7 +129,7 @@ class Enemy(
         recoveryDelay = 1.5
         val incoming = damage * (if (markedSeconds > 0.0) 1.25 else 1.0) *
             (if (piercesArmor) 1.0 else type.damageMultiplier) *
-            (if (isBoss && !bossExposed) Bastion.PROTECTED_DAMAGE_MULTIPLIER else 1.0) *
+            bossDamageMultiplier *
             (if (protectingCommander != null) Commander.ESCORT_DAMAGE_MULTIPLIER else 1.0)
         val absorbed = min(shield, incoming * shieldMultiplier)
         shield -= absorbed

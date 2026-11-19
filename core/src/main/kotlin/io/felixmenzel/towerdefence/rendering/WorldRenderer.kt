@@ -19,6 +19,7 @@ import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.REGENERATION
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.SHIELD
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Bastion
+import io.felixmenzel.towerdefence.simulation.Marshal
 import io.felixmenzel.towerdefence.simulation.Enemy
 import io.felixmenzel.towerdefence.simulation.EnemyType
 import io.felixmenzel.towerdefence.simulation.GameSimulation
@@ -132,6 +133,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 escort.interpolatedX(alpha).toFloat(), escort.interpolatedY(alpha).toFloat(), 2.5f,
             )
         }
+        val marshal = simulation.activeBoss?.takeIf { it.isMarshal && !it.bossExposed }
+        if (marshal != null) {
+            shapes.color = MARSHAL_LINK
+            for (relay in marshal.supportingRelays) {
+                shapes.rectLine(marshal.interpolatedX(alpha).toFloat(), marshal.interpolatedY(alpha).toFloat(),
+                    relay.interpolatedX(alpha).toFloat(), relay.interpolatedY(alpha).toFloat(), 3f)
+            }
+        }
         for (enemy in simulation.enemies) drawEnemy(enemy, simulation, alpha)
         simulation.echo.nextShot(simulation.state == GameState.PREPARING)?.let { shot ->
             ring(shot.fromX.toFloat(), shot.fromY.toFloat(), 30f, 1.5f, ECHO, 0.7f)
@@ -185,7 +194,10 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         drawPath(simulation.path, 48f, palette.laneEdge)
         drawPath(simulation.path, 42f, palette.lane)
         drawPath(simulation.path, 26f, palette.laneCenter)
-        if (simulation.showBossWindows) drawBossWindows(simulation.path)
+        when (simulation.bossWindowWave) {
+            Bastion.WAVE -> drawBossWindows(simulation.path, Bastion.windows)
+            Marshal.WAVE -> drawBossWindows(simulation.path, Marshal.windows)
+        }
         shapes.color = palette.laneMark
         val path = simulation.path
         for (index in 0 until path.lastIndex) {
@@ -235,7 +247,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         shapes.rectLine(874f, 504f, 874f, 535f, 1f)
     }
 
-    private fun drawBossWindows(path: List<Waypoint>) {
+    private fun drawBossWindows(path: List<Waypoint>, windows: List<ClosedFloatingPointRange<Double>>) {
         var offset = 0.0
         shapes.color = BOSS_EXPOSED
         for ((from, to) in path.zipWithNext()) {
@@ -243,7 +255,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             val dy = to.y - from.y
             val length = sqrt(dx * dx + dy * dy)
             if (length == 0.0) continue
-            for (window in Bastion.windows) {
+            for (window in windows) {
                 val start = maxOf(0.0, window.start - offset)
                 val end = minOf(length, window.endInclusive - offset)
                 if (end <= start) continue
@@ -438,13 +450,13 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.color = towerColor(TowerType.BEACON)
             shapes.triangle(x - 4f, y - 19f, x + 4f, y - 19f, x, y - 13f)
         }
-        val radius = if (enemy.isBoss) 20f else if (enemy.isCommander) 16f else when (enemy.type) {
+        val radius = if (enemy.isMarshal) 24f else if (enemy.isBoss) 20f else if (enemy.isCommander) 16f else when (enemy.type) {
             EnemyType.ARMORED, EnemyType.PLATED, EnemyType.VANGUARD -> 13f
             EnemyType.FAST -> 9f
             else -> 11f
         }
         val baseColor = if (enemy.isBoss) {
-            if (enemy.bossExposed) BOSS_EXPOSED else BOSS_PROTECTED
+            if (enemy.bossExposed) BOSS_EXPOSED else protectedBossColor(enemy)
         } else if (enemy.isCommander) COMMAND_LINK else when (enemy.type) {
             EnemyType.ARMORED -> ORANGE
             EnemyType.FAST -> MAGENTA
@@ -467,7 +479,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
                 shapes.color = color
                 if (enemy.isBoss) {
                     diamond(x, y, 10f)
-                    if (!enemy.bossExposed) ring(x, y, 23f, 2f, BOSS_PROTECTED)
+                    if (!enemy.bossExposed) ring(x, y, radius + 3f, 2f, protectedBossColor(enemy))
                 } else shapes.rect(x - 4f, y - 4f, 8f, 8f)
             }
             EnemyType.FAST -> drawRunner(x, y, enemy, simulation)
@@ -513,8 +525,9 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val health = (enemy.health / enemy.maxHealth).toFloat().coerceIn(0f, 1f)
         val healthColor = if (health < 0.3f) CORAL else HEALTH
         if (enemy.isBoss) {
-            val phaseColor = if (enemy.bossExposed) BOSS_EXPOSED else BOSS_PROTECTED
-            drawDefenseMeter(x - 15f, y + 27f, 5f, health, healthColor, phaseColor)
+            val phaseColor = if (enemy.bossExposed) BOSS_EXPOSED else protectedBossColor(enemy)
+            val barY = if (enemy.isMarshal) 31f else 27f
+            drawDefenseMeter(x - 15f, y + barY, 5f, health, healthColor, phaseColor)
         } else drawDefenseMeter(x - 15f, y + 19f, 4f, health, healthColor, BORDER)
 
         val hasShield = enemy.maxShield > 0.0
@@ -540,6 +553,10 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.rect(x + 18f, y + 20f, 8f, 2f)
         }
         if (enemy.isElite) drawEliteBrackets(x, y)
+        if (enemy.isMarshalRelay) {
+            shapes.color = MARSHAL_LINK
+            diamond(x, y - 22f, 5f)
+        }
         if (enemy.isCommander) {
             shapes.color = COMMAND_LINK
             diamond(x, y - 22f, 5f)
@@ -548,6 +565,8 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.rect(x - 6f, y - 18f, 12f, 2f)
         }
     }
+
+    private fun protectedBossColor(enemy: Enemy) = if (enemy.isMarshal) MARSHAL_LINK else BOSS_PROTECTED
 
     private fun drawEliteBrackets(x: Float, y: Float) {
         shapes.color = ELITE
@@ -817,6 +836,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")
         val ELITE = Color.valueOf("ffe08a")
+        val MARSHAL_LINK = Color.valueOf("6bcfff")
         val COMMAND_LINK = Color.valueOf("75eeb9")
         val BOSS_EXPOSED = Color.valueOf("ffcb6e")
         val BOSS_PROTECTED = Color.valueOf("e5a0fc")

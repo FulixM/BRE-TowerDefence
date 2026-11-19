@@ -570,16 +570,28 @@ class DefenseScreen(
             simulation.placementError(cursor.x.toDouble(), (cursor.y - BOARD_Y).toDouble())
                 ?: if (simulation.gold < buildType!!.cost) "Not enough gold for ${buildType!!.title}." else null
         } else null
+        val activeBoss = simulation.activeBoss
         val hint = placementReason ?: when {
             messageTime > 0f -> message
             simulation.canOfferElite -> {
                 val healthBonus = ((GameSimulation.ELITE_HEALTH_MULTIPLIER - 1.0) * 100).toInt()
                 "Optional: ${GameSimulation.ELITE_COUNT} enemies gain $healthBonus% health. Clear for +${GameSimulation.ELITE_REWARD}g."
             }
-            simulation.activeBoss != null -> if (simulation.activeBoss?.bossExposed == true) {
-                "Bastion exposed: damage is no longer reduced."
-            } else "Bastion protected: deal full damage in the marked lanes."
-            preparing && simulation.showBossWindows -> "Bastion must fall before the core. Build near the two marked damage windows."
+            activeBoss?.isMarshal == true -> {
+                val relayCount = activeBoss.supportingRelays.count()
+                when {
+                    relayCount == 0 -> "Marshal exposed: no active relays remain."
+                    activeBoss.bossExposed -> "Marshal exposed in the damage window. $relayCount active relays."
+                    else -> "Marshal protected by $relayCount active relays. Target them or use the marked lanes."
+                }
+            }
+            activeBoss?.bossExposed == true -> "Bastion exposed: damage is no longer reduced."
+            activeBoss != null -> "Bastion protected: deal full damage in the marked lanes."
+            preparing && simulation.showBossWindows -> {
+                if (simulation.waveName(briefedWave) == "Marshal") {
+                    "The Marshal reaches the core unless stopped. Break both relays or use the marked damage windows."
+                } else "Bastion must fall before the core. Build near the two marked damage windows."
+            }
             simulation.hasCommanders(briefedWave) -> "Green links mark protected escorts. Take out their commander to remove the protection."
             simulation.wave == 0 -> message
             else -> "Open the enemy guide [G] to check enemy abilities and counters."
@@ -662,7 +674,7 @@ class DefenseScreen(
             }
             simulation.state == GameState.LOST -> {
                 title = "BASE OVERRUN"
-                subtitle = if (simulation.bossBreached) "Bastion reached the core. Build near the marked damage windows."
+                subtitle = if (simulation.bossBreached) "${simulation.waveName(simulation.wave)} reached the core. Build near the marked damage windows."
                     else "You reached wave ${simulation.wave}. Rebuild, mix your towers and try again."
             }
             else -> {

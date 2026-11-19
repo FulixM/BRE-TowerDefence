@@ -30,6 +30,8 @@ Start each wave when ready. The bottom bar previews the next wave, and the enemy
 
 The Corridor's wave 15 features **Bastion**. Two gold-marked stretches drop its violet protection. If it reaches the core, the mission ends in defeat.
 
+On The Corridor, the **Marshal** closes wave 20. Two relays arrive just ahead of it and maintain its protection outside the marked damage windows. Remove both relays to expose it for the rest of the wave. A breach loses the mission.
+
 Commanders in waves 17 and 19 cut damage to their two nearby escorts in half. A green link marks the protection. It breaks if the commander falls or moves too far away.
 
 Choose **Quick mission / 6 waves** in Mission Setup for a fixed 330-gold start and mixed squads on The Corridor. Quick missions have separate local bests for each difficulty.
