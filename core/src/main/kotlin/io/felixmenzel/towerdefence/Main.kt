@@ -12,7 +12,7 @@ import io.felixmenzel.towerdefence.ui.DefenseScreen
 class Main(private val profileName: String = "bre-tower-defence-profile") : KtxGame<KtxScreen>() {
     override fun create() {
         val preferences = Gdx.app.getPreferences(profileName)
-        val profile = FieldProfile(preferences.getInteger("xp", 0)) { xp ->
+        val profile = FieldProfile(preferences.getInteger("xp", 0), preferences.getBoolean(RELAY_HUNTER_KEY, false)) { xp ->
             preferences.putInteger("xp", xp).flush()
         }
         val records = RemixRecords(
@@ -23,11 +23,12 @@ class Main(private val profileName: String = "bre-tower-defence-profile") : KtxG
             load = { preferences.getString(CHECKPOINT_KEY, "") },
             write = { value -> preferences.putString(CHECKPOINT_KEY, value).flush() },
         )
-        addScreen(DefenseScreen(profile, records, saves) { xp, best ->
+        addScreen(DefenseScreen(profile, records, saves) { xp, best, relayHunter ->
             // Close the replayable checkpoint and write the reward in the same preferences flush.
             val previous = preferences.get().toMap()
             try {
                 preferences.putInteger("xp", xp)
+                preferences.putBoolean(RELAY_HUNTER_KEY, relayHunter)
                 if (best != null) preferences.putString("remix.${best.first}", best.second)
                 preferences.remove(CHECKPOINT_KEY)
                 preferences.flush()
@@ -41,6 +42,7 @@ class Main(private val profileName: String = "bre-tower-defence-profile") : KtxG
     }
 
     private companion object {
+        const val RELAY_HUNTER_KEY = "workshop.relay-hunter"
         const val CHECKPOINT_KEY = "mission.checkpoint"
     }
 }

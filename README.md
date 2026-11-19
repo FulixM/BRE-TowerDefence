@@ -32,6 +32,8 @@ The Corridor's wave 15 features **Bastion**. Two gold-marked stretches drop its 
 
 On The Corridor, the **Marshal** closes wave 20. Two relays arrive just ahead of it and maintain its protection outside the marked damage windows. Remove both relays to expose it for the rest of the wave. A breach loses the mission.
 
+Winning The Corridor campaign unlocks **Relay Hunter** permanently in your local Rail workshop. Equip it in Mission Setup to double damage spent on shields and deal 25% more damage to the Marshal's relays. Rail takes 25% longer to reload with the module. Echoes and checkpoints keep the selected module.
+
 Commanders in waves 17 and 19 cut damage to their two nearby escorts in half. A green link marks the protection. It breaks if the commander falls or moves too far away.
 
 Choose **Quick mission / 6 waves** in Mission Setup for a fixed 330-gold start and mixed squads on The Corridor. Quick missions have separate local bests for each difficulty.

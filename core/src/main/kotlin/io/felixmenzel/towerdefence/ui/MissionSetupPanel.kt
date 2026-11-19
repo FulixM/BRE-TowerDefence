@@ -3,6 +3,7 @@ package io.felixmenzel.towerdefence.ui
 import com.badlogic.gdx.graphics.Color
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
+import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.RemixScore
 import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.simulation.Waypoint
@@ -24,6 +25,8 @@ internal fun HudCanvas.drawMissionSetup(
     mode: MissionMode,
     module: TremorModule,
     rank: Int,
+    railModule: RailModule,
+    relayHunterUnlocked: Boolean,
     best: RemixScore?,
     feedback: String,
     feedbackError: Boolean,
@@ -33,12 +36,13 @@ internal fun HudCanvas.drawMissionSetup(
     reroll: () -> Unit,
     toggleQuick: () -> Unit,
     cycleModule: () -> Unit,
+    toggleRailModule: () -> Unit,
     copyCode: () -> Unit,
     importCode: () -> Unit,
     launch: () -> Unit,
     cancel: () -> Unit,
 ) {
-    rect(140f, 82f, 720f, 513f, OVERLAY)
+    rect(140f, 46f, 720f, 549f, OVERLAY)
     rect(140f, 591f, 720f, 4f, CYAN)
     text("MISSION SETUP", 182f, 559f, 1.65f, WHITE)
     text("${mode.title} / ${mode.waveCount} waves", 182f, 524f, 0.9f, MUTED, 636f)
@@ -93,5 +97,14 @@ internal fun HudCanvas.drawMissionSetup(
         text("${module.radius.toInt()} impact radius  /  ${module.slowPercent}% slow", 379f, 110f, 0.77f, MUTED)
     } else {
         text("Tremor modules unlock at field rank ${TremorModule.REQUIRED_RANK}.", 182f, 106f, 0.78f, MUTED)
+    }
+
+    if (relayHunterUnlocked) {
+        button("Rail / ${railModule.title}", 182f, 54f, 180f, 25f, scale = 0.76f, action = toggleRailModule)
+        val detail = if (railModule == RailModule.RELAY_HUNTER) "2x shield damage / +25% vs relays / +25% reload"
+            else "Equip Relay Hunter to trade fire rate for shield damage."
+        text(detail, 379f, 72f, 0.77f, MUTED)
+    } else {
+        text("Rail workshop: defeat the Marshal on The Corridor to unlock Relay Hunter.", 182f, 72f, 0.77f, MUTED, 636f)
     }
 }

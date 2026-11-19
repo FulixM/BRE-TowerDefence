@@ -11,6 +11,7 @@ class Tower(
     val id: Long = 0L,
     val type: TowerType = TowerType.RAPID,
     val tremorModule: TremorModule = TremorModule.STANDARD,
+    val railModule: RailModule = RailModule.STANDARD,
 ) {
     private val initialRange = range
     private val initialDamage = damage
@@ -47,8 +48,8 @@ class Tower(
     private fun rangeAtLevel(level: Int) = initialRange + (level - 1) * 14.0
     private fun damageAtLevel(level: Int) = initialDamage * (1.0 + (level - 1) * 0.65)
     private fun attackIntervalAtLevel(level: Int) =
-        (initialAttackInterval * (1.0 - (level - 1) * 0.08) * cannonSpecialization.attackIntervalFactor)
-            .toLong().coerceAtLeast(1L)
+        (initialAttackInterval * (1.0 - (level - 1) * 0.08) * cannonSpecialization.attackIntervalFactor *
+            railModule.intervalFactor(type)).toLong().coerceAtLeast(1L)
 
     internal fun upgrade() {
         val upgrade = checkNotNull(nextUpgrade)
@@ -116,7 +117,7 @@ class Tower(
         }
 
         for ((index, enemy) in hits.withIndex()) {
-            applyTowerHit(type, enemy, damage, index, tremorModule)
+            applyTowerHit(type, enemy, damage, index, tremorModule, railModule)
         }
         val hitEnemyIds = hits.map { it.id }
         nextAttackTick = currentTick + attackIntervalTicks
@@ -125,6 +126,7 @@ class Tower(
             arcJumps = if (type == TowerType.ARC) hits.drop(1).map { Waypoint(it.x, it.y) } else emptyList(),
             areaRadius = impactRadius,
             tremorModule = tremorModule,
+            railModule = railModule,
         )
     }
 
@@ -204,6 +206,21 @@ enum class TremorModule(val title: String, val radius: Double, val speedFactor: 
     }
 }
 
+enum class RailModule(
+    val title: String,
+    private val attackIntervalFactor: Double,
+    val shieldDamageFactor: Double,
+    val relayDamageFactor: Double,
+) {
+    STANDARD("Standard", 1.0, 1.0, 1.0),
+    RELAY_HUNTER("Relay Hunter", 1.25, 2.0, 1.25);
+
+    fun intervalFactor(type: TowerType): Double = if (type == TowerType.RAIL) attackIntervalFactor else 1.0
+
+    internal fun maxAttackInterval(type: TowerType): Long =
+        (type.baseAttackIntervalTicks * intervalFactor(type)).toLong()
+}
+
 /** A visual trace of an already resolved hit, not a second source of damage. */
 data class Shot(
     val fromX: Double,
@@ -217,6 +234,7 @@ data class Shot(
     val areaRadius: Double = 0.0,
     val isEcho: Boolean = false,
     val tremorModule: TremorModule = TremorModule.STANDARD,
+    val railModule: RailModule = RailModule.STANDARD,
 ) {
     // Older recordings did not store the Cannon radius.
     internal val cannonSplashRadius: Double get() = if (areaRadius > 0.0) areaRadius else Tower.SPLASH_RADIUS
@@ -239,10 +257,14 @@ internal fun applyTowerHit(
     damage: Double,
     impactIndex: Int = 0,
     tremorModule: TremorModule = TremorModule.STANDARD,
+    railModule: RailModule = RailModule.STANDARD,
 ) {
     val strength = if (type == TowerType.ARC) ARC_DAMAGE_FACTORS[impactIndex] else 1.0
-    if (type == TowerType.SUNDER) enemy.takeShieldbreakingDamage(damage)
-    else enemy.takeDamage(damage * strength, piercesArmor = type == TowerType.RAIL)
+    when (type) {
+        TowerType.SUNDER -> enemy.takeShieldbreakingDamage(damage)
+        TowerType.RAIL -> enemy.takeRailDamage(damage, railModule)
+        else -> enemy.takeDamage(damage * strength)
+    }
     if (!enemy.isAlive) return
     when (type) {
         TowerType.FROST -> enemy.applySlow(0.55, 1.5)

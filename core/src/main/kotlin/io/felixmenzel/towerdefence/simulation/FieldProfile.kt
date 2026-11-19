@@ -1,7 +1,13 @@
 package io.felixmenzel.towerdefence.simulation
 
 /** Progress is independent of an active defence. The desktop launcher supplies local persistence. */
-class FieldProfile(initialXp: Int = 0, private val saveXp: (Int) -> Unit = {}) {
+class FieldProfile(
+    initialXp: Int = 0,
+    relayHunterUnlocked: Boolean = false,
+    private val saveXp: (Int) -> Unit = {},
+) {
+    var relayHunterUnlocked: Boolean = relayHunterUnlocked
+        private set
     var xp: Int = initialXp.coerceAtLeast(0)
         private set
     val rank: Int get() = xp / XP_PER_RANK + 1
@@ -27,6 +33,16 @@ class FieldProfile(initialXp: Int = 0, private val saveXp: (Int) -> Unit = {}) {
         val earned = total - xp
         xp = total
         return earned
+    }
+
+    internal fun relayHunterAfterMission(game: GameSimulation): Boolean =
+        relayHunterUnlocked || (game.state == GameState.WON && game.mode == MissionMode.CAMPAIGN &&
+            game.battleMap == BattleMap.CORRIDOR && game.wave == Marshal.WAVE)
+
+    internal fun applyRelayHunterUnlock(unlocked: Boolean): Boolean {
+        val newlyUnlocked = unlocked && !relayHunterUnlocked
+        relayHunterUnlocked = relayHunterUnlocked || unlocked
+        return newlyUnlocked
     }
 
     companion object {

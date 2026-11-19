@@ -123,6 +123,11 @@ class Enemy(
         applyDamage(damage, piercesArmor = false, shieldMultiplier = 3.0)
     }
 
+    internal fun takeRailDamage(damage: Double, module: RailModule) {
+        val relayFactor = if (isMarshalRelay) module.relayDamageFactor else 1.0
+        applyDamage(damage * relayFactor, piercesArmor = true, shieldMultiplier = module.shieldDamageFactor)
+    }
+
     private fun applyDamage(damage: Double, piercesArmor: Boolean, shieldMultiplier: Double) {
         require(damage.isFinite() && damage >= 0.0) { "Damage must be finite and non-negative" }
         if (damage == 0.0 || !isAlive) return
