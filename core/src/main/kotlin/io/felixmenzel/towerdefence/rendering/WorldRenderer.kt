@@ -17,6 +17,7 @@ import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.ARMOR
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.HEALTH
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.REGENERATION
 import io.felixmenzel.towerdefence.rendering.EnemyDefenseColors.SHIELD
+import io.felixmenzel.towerdefence.simulation.BuildGrid
 import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Bastion
 import io.felixmenzel.towerdefence.simulation.Marshal
@@ -40,6 +41,7 @@ import kotlin.math.sqrt
 /** Procedural artwork only: every visual effect follows the simulation clock, including pause. */
 class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private val shapes = ShapeRenderer()
+    private val terrainRenderer = TerraceRenderer(shapes)
     private val batch = SpriteBatch()
     private val viewportBuffer = BufferUtils.newIntBuffer(4)
     private val scissorBuffer = BufferUtils.newIntBuffer(4)
@@ -122,8 +124,11 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     private fun drawGeometry(simulation: GameSimulation, alpha: Double, selectedTower: Tower?,
         buildType: TowerType?, cursorX: Double?, cursorY: Double?) {
         shapes.begin(ShapeRenderer.ShapeType.Filled)
-        drawBoard(simulation)
-        selectedTower?.let { drawCoverage(simulation, it.x, it.y, it.range, CYAN) }
+        drawBoard(simulation, buildType != null)
+        selectedTower?.let {
+            drawCoverage(simulation, it.x, it.y, it.range, CYAN)
+            if (simulation.gridPlacement) drawTile(it.x.toFloat(), it.y.toFloat(), CYAN)
+        }
         for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
         shapes.color = COMMAND_LINK
         for (escort in simulation.enemies) {
@@ -162,12 +167,12 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         drawShots(simulation)
         for (enemy in simulation.enemies) drawEnemyDefenses(enemy, alpha)
         if (buildType != null && cursorX != null && cursorY != null) {
-            drawPreview(simulation, buildType, cursorX.toFloat(), cursorY.toFloat())
+            drawPreview(simulation, buildType, cursorX, cursorY)
         }
         shapes.end()
     }
 
-    private fun drawBoard(simulation: GameSimulation) {
+    private fun drawBoard(simulation: GameSimulation, placing: Boolean) {
         val palette = when (simulation.battleMap) {
             BattleMap.CORRIDOR -> DEFENSE_PALETTE
             BattleMap.SWITCHBACK -> RELAY_PALETTE
@@ -176,30 +181,13 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         }
         shapes.color = palette.background
         shapes.rect(0f, 0f, WIDTH, HEIGHT)
-        shapes.color = palette.grid
-        for (x in 0..900 step 30) shapes.rect(x.toFloat(), 0f, 1f, HEIGHT)
-        for (y in 0..560 step 30) shapes.rect(0f, y.toFloat(), WIDTH, 1f)
-        shapes.color = palette.majorGrid
-        for (x in 60..870 step 120) {
-            for (y in 60..540 step 120) {
-                shapes.rect(x - 3f, y.toFloat(), 7f, 1f)
-                shapes.rect(x.toFloat(), y - 3f, 1f, 7f)
-            }
+        if (!simulation.gridPlacement) {
+            shapes.color = palette.grid
+            for (x in 0..900 step 30) shapes.rect(x.toFloat(), 0f, 1f, HEIGHT)
+            for (y in 0..560 step 30) shapes.rect(0f, y.toFloat(), WIDTH, 1f)
         }
-        for (terrace in simulation.terrain.terraces) {
-            val x = terrace.x.toFloat()
-            val y = terrace.y.toFloat()
-            val edge = terrace.radius.toFloat()
-            val summit = terrace.summitRadius.toFloat()
-            shapes.setColor(0.05f, 0.08f, 0.09f, 0.67f)
-            circle(x, y - 5f, edge)
-            shapes.setColor(0.15f, 0.27f, 0.25f, 0.84f)
-            circle(x, y, edge)
-            ring(x, y, edge, 2f, TERRACE_EDGE, 0.75f)
-            shapes.setColor(0.23f, 0.40f, 0.33f, 0.91f)
-            circle(x, y, summit)
-            ring(x, y, summit, 2f, TERRACE_EDGE, 0.95f)
-        }
+        terrainRenderer.draw(simulation.battleMap, simulation.terrain.terraces)
+        if (simulation.gridPlacement) drawBuildGrid(palette, placing)
         if (simulation.battleMap == BattleMap.SWITCHBACK) drawRelayTrim()
         simulation.inactivePath?.let { alternate ->
             drawPath(alternate, 48f, palette.majorGrid)
@@ -708,12 +696,44 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         }
     }
 
-    private fun drawPreview(simulation: GameSimulation, type: TowerType, x: Float, y: Float) {
-        val valid = simulation.placementError(x.toDouble(), y.toDouble()) == null &&
+    private fun drawBuildGrid(palette: BoardPalette, placing: Boolean) {
+        val left = BuildGrid.LEFT.toFloat()
+        val bottom = BuildGrid.BOTTOM.toFloat()
+        val width = (BuildGrid.COLUMNS * BuildGrid.SIZE).toFloat()
+        val height = (BuildGrid.ROWS * BuildGrid.SIZE).toFloat()
+        val ink = if (placing) MUTED else palette.majorGrid
+        shapes.setColor(ink.r, ink.g, ink.b, if (placing) 0.46f else 0.68f)
+        for (column in 0..BuildGrid.COLUMNS) {
+            shapes.rect(left + column * BuildGrid.SIZE - 0.5f, bottom, 1f, height)
+        }
+        for (row in 0..BuildGrid.ROWS) {
+            shapes.rect(left, bottom + row * BuildGrid.SIZE - 0.5f, width, 1f)
+        }
+    }
+
+    private fun drawTile(x: Float, y: Float, color: Color) {
+        val size = BuildGrid.SIZE - 2f
+        val left = x - size / 2f
+        val bottom = y - size / 2f
+        shapes.setColor(color.r, color.g, color.b, 0.14f)
+        shapes.rect(left, bottom, size, size)
+        shapes.setColor(color.r, color.g, color.b, 0.82f)
+        shapes.rect(left, bottom, size, 1.6f)
+        shapes.rect(left, bottom + size - 1.6f, size, 1.6f)
+        shapes.rect(left, bottom + 1.6f, 1.6f, size - 3.2f)
+        shapes.rect(left + size - 1.6f, bottom + 1.6f, 1.6f, size - 3.2f)
+    }
+
+    private fun drawPreview(simulation: GameSimulation, type: TowerType, cursorX: Double, cursorY: Double) {
+        val position = simulation.buildPosition(cursorX, cursorY) ?: return
+        val x = position.x.toFloat()
+        val y = position.y.toFloat()
+        val valid = simulation.placementError(cursorX, cursorY) == null &&
             simulation.gold >= type.cost &&
             (simulation.state == GameState.PREPARING || simulation.state == GameState.RUNNING)
         val color = if (valid) HEALTH else CORAL
-        drawCoverage(simulation, x.toDouble(), y.toDouble(), simulation.baseRange(type), color)
+        if (valid || !simulation.gridPlacement) drawCoverage(simulation, position.x, position.y, simulation.baseRange(type), color)
+        if (simulation.gridPlacement) drawTile(x, y, color)
         shapes.setColor(color.r, color.g, color.b, 0.25f)
         hexagon(x, y, 22f)
         ring(x, y, 23f, 2f, color, 0.8f)
@@ -847,7 +867,6 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
     )
 
     private companion object {
-        private val TERRACE_EDGE = Color(0.52f, 0.72f, 0.58f, 1f)
         const val WIDTH = 900f
         const val HEIGHT = 560f
         const val HIT_FLASH_TICKS = 7L

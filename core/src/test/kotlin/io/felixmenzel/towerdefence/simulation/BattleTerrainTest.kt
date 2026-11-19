@@ -87,9 +87,9 @@ class BattleTerrainTest {
         val restored = assertNotNull(GameSimulation.restore(assertNotNull(saves.load())))
         assertEquals(game.terrain.terraces, restored.terrain.terraces)
         assertEquals(game.towers.single().height, restored.towers.single().height)
-        assertEquals("BRE2-C-N-583471", restored.challenge?.code)
+        assertEquals("BRE3-C-N-583471", restored.challenge?.code)
 
-        val v4 = Base64.getDecoder().decode(encoded).dropLast(5).toByteArray()
+        val v4 = Base64.getDecoder().decode(encoded).dropLast(6).toByteArray()
         ByteBuffer.wrap(v4).putInt(4)
         val crc = CRC32().apply { update(v4) }.value.toInt()
         encoded = Base64.getEncoder().encodeToString(v4 + ByteBuffer.allocate(4).putInt(crc).array())

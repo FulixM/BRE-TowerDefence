@@ -11,7 +11,7 @@ class WaveEchoTest {
     @Test
     fun `recorded shots keep their offsets and coordinates after preparation and sale`() {
         val game = GameSimulation(difficulty = Difficulty.RELAXED)
-        val id = assertNotNull(game.buildTower(TowerType.RAPID, 100.0, 105.0).towerId)
+        val id = assertNotNull(game.buildTower(TowerType.RAPID, 100.0, 82.0).towerId)
         assertTrue(game.selectEchoTower(id).success)
         repeat(43) { game.update() }
         val recordingStart = game.tick
@@ -122,8 +122,8 @@ class WaveEchoTest {
     @Test
     fun `arming selects only one tower and restart clears echo state`() {
         val game = GameSimulation()
-        val first = assertNotNull(game.buildTower(TowerType.RAPID, 100.0, 105.0).towerId)
-        val second = assertNotNull(game.buildTower(TowerType.RAPID, 175.0, 105.0).towerId)
+        val first = assertNotNull(game.buildTower(TowerType.RAPID, 100.0, 82.0).towerId)
+        val second = assertNotNull(game.buildTower(TowerType.RAPID, 175.0, 82.0).towerId)
         assertTrue(game.selectEchoTower(first).success)
         assertTrue(game.selectEchoTower(second).success)
         assertEquals(second, game.echo.armedTowerId)
