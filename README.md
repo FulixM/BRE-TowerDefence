@@ -26,9 +26,11 @@ Choose **Remix** in mission setup to vary enemy order and spawn spacing. Reroll 
 
 On **Twin Locks**, press **V** between waves to switch paths. Both routes remain reserved for enemies, and purple markers show the first recorded echo impact positions. At field rank 3, choose a **Tremor** module in mission setup. Wide covers a larger area with a weaker slow. Focused covers a smaller area with a stronger slow. The chosen module applies to the whole mission, including recorded echoes.
 
-Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive 15 waves to win. The final five preview named formations built around shields, armor, regeneration and mixed assaults.
+Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive 20 waves to win. The five new late waves include command patrols and a final mixed assault.
 
-The Corridor's campaign finale adds **Bastion**. Two gold-marked stretches drop its violet protection. If it reaches the core, the mission ends in defeat.
+The Corridor's wave 15 features **Bastion**. Two gold-marked stretches drop its violet protection. If it reaches the core, the mission ends in defeat.
+
+Commanders in waves 17 and 19 cut damage to their two nearby escorts in half. A green link marks the protection. It breaks if the commander falls or moves too far away.
 
 Choose **Quick mission / 6 waves** in Mission Setup for a fixed 330-gold start and mixed squads on The Corridor. Quick missions have separate local bests for each difficulty.
 

@@ -2,6 +2,7 @@ package io.felixmenzel.towerdefence.simulation
 
 /** Bastion's protection opens at fixed distances along The Corridor. */
 object Bastion {
+    const val WAVE = 15
     const val HEALTH_MULTIPLIER = 1.22
     const val PROTECTED_DAMAGE_MULTIPLIER = 0.35
 

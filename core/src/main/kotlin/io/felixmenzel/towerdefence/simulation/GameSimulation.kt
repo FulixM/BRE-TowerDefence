@@ -47,14 +47,14 @@ class GameSimulation(
     val totalWaves = mode.waveCount
     private val waves = List(totalWaves) { mode.plan(it + 1, seed) }
     private val bossSlot = if (mode == MissionMode.CAMPAIGN && battleMap == BattleMap.CORRIDOR) {
-        waves.last().enemies.indexOfLast { it == EnemyType.ARMORED }
+        waves[Bastion.WAVE - 1].enemies.indexOfLast { it == EnemyType.ARMORED }
     } else -1
     val showBossWindows: Boolean get() = bossSlot >= 0 &&
-        (wave == totalWaves - 1 && state == GameState.PREPARING || wave == totalWaves && state == GameState.RUNNING)
+        (wave == Bastion.WAVE - 1 && state == GameState.PREPARING || wave == Bastion.WAVE && state == GameState.RUNNING)
     var bossBreached = false
         private set
     val activeBoss: Enemy? get() = enemies.firstOrNull { it.isBoss && it.isAlive && !it.hasReachedGoal }
-    private val bossWaveDescription = if (bossSlot >= 0) waves.last().describe(replaceBulwarkWithBoss = true) else null
+    private val bossWaveDescription = if (bossSlot >= 0) waves[Bastion.WAVE - 1].describe(replaceBulwarkWithBoss = true) else null
     var state = GameState.PREPARING
         private set
     var remainingToSpawn = 0
@@ -236,12 +236,15 @@ class GameSimulation(
         return null
     }
 
+    fun hasCommanders(waveNumber: Int): Boolean =
+        waves.getOrNull(waveNumber - 1)?.commanderSlots?.isNotEmpty() == true
+
     fun waveName(waveNumber: Int): String? =
-        if (waveNumber == totalWaves && bossSlot >= 0) "Bastion" else mode.waveName(waveNumber)
+        if (waveNumber == Bastion.WAVE && bossSlot >= 0) "Bastion" else mode.waveName(waveNumber)
 
     fun waveDescription(waveNumber: Int): String {
         require(waveNumber in 1..totalWaves)
-        return if (waveNumber == totalWaves && bossWaveDescription != null) bossWaveDescription
+        return if (waveNumber == Bastion.WAVE && bossWaveDescription != null) bossWaveDescription
         else waves[waveNumber - 1].description
     }
 
@@ -283,12 +286,25 @@ class GameSimulation(
     private fun canManageTowers() = state == GameState.PREPARING || state == GameState.RUNNING
 
     private fun spawnEnemy() {
-        val type = waves[wave - 1].enemies[spawnedThisWave]
+        val plan = waves[wave - 1]
+        val type = plan.enemies[spawnedThisWave]
         val elite = eliteActive && spawnedThisWave < ELITE_COUNT
-        val boss = wave == totalWaves && spawnedThisWave == bossSlot
-        val health = type.baseHealth * mode.healthMultiplier(wave) * difficulty.healthMultiplier *
-            (if (elite) ELITE_HEALTH_MULTIPLIER else 1.0) * (if (boss) Bastion.HEALTH_MULTIPLIER else 1.0)
-        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type, isElite = elite, isBoss = boss)
+        val boss = wave == Bastion.WAVE && spawnedThisWave == bossSlot
+        val commandSlot = plan.commanderFor(spawnedThisWave)
+        val isCommander = commandSlot == spawnedThisWave
+        val escortCommander = if (commandSlot != null && !isCommander) {
+            val commanderId = nextEnemyId - (spawnedThisWave - commandSlot)
+            mutableEnemies.firstOrNull { it.id == commanderId }
+        } else null
+        val healthFactor = when {
+            elite -> ELITE_HEALTH_MULTIPLIER
+            boss -> Bastion.HEALTH_MULTIPLIER
+            isCommander -> Commander.HEALTH_MULTIPLIER
+            else -> 1.0
+        }
+        val health = type.baseHealth * mode.healthMultiplier(wave) * difficulty.healthMultiplier * healthFactor
+        mutableEnemies += Enemy(nextEnemyId++, path, type.baseSpeed, health, type,
+            isElite = elite, isBoss = boss, isCommander = isCommander, escortCommander = escortCommander)
         spawnedThisWave++
         remainingToSpawn--
     }

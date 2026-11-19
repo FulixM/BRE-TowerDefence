@@ -560,6 +560,11 @@ object DesktopSmokeTest {
             }
             addEnemy(640.0, EnemyType.NORMAL, elite = true).takeDamage(80.0)
             addEnemy(760.0, EnemyType.VANGUARD)
+            val commander = Enemy(101, listOf(Waypoint(400.0, 360.0), Waypoint(850.0, 360.0)),
+                0.0, 100.0, EnemyType.ARMORED, isCommander = true)
+            val escort = Enemy(102, listOf(Waypoint(500.0, 360.0), Waypoint(850.0, 360.0)),
+                0.0, 100.0, escortCommander = commander)
+            enemies.addAll(listOf(commander, escort))
 
             val renderer = privateField<WorldRenderer>(screen, "renderer")
             val projection = Matrix4(viewport.camera.combined).translate(0f, DefenseScreen.BOARD_Y, 0f)
@@ -580,6 +585,7 @@ object DesktopSmokeTest {
                     }
                 }
 
+                expectColor("commander protection link", 450f, 360f, 0x75eeb9)
                 expectColor("full health after shield absorbs a shot", 150f, 301f, 0x7ce7a2)
                 expectColor("remaining shield", 150f, 307f, 0x56dffa)
                 expectColor("spent part of shield", 170f, 307f, 0x080d17)

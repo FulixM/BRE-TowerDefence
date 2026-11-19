@@ -1,5 +1,6 @@
 package io.felixmenzel.towerdefence.simulation
 
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.min
 
@@ -13,6 +14,8 @@ class Enemy(
     val bounty: Int = type.bounty,
     val isElite: Boolean = false,
     val isBoss: Boolean = false,
+    val isCommander: Boolean = false,
+    private val escortCommander: Enemy? = null,
 ) {
     private val path = path.toList()
 
@@ -39,6 +42,10 @@ class Enemy(
     var health = maxHealth
         private set
     val isAlive: Boolean get() = health > 0.0
+    val protectingCommander: Enemy? get() = escortCommander?.takeIf {
+        it.isCommander && it.isAlive && !it.hasReachedGoal &&
+            abs(it.distanceTravelled - distanceTravelled) <= Commander.PROTECTION_RANGE
+    }
     var slowFactor = 1.0
         private set
     private var slowSeconds = 0.0
@@ -110,7 +117,8 @@ class Enemy(
         recoveryDelay = 1.5
         val incoming = damage * (if (markedSeconds > 0.0) 1.25 else 1.0) *
             (if (piercesArmor) 1.0 else type.damageMultiplier) *
-            (if (isBoss && !bossExposed) Bastion.PROTECTED_DAMAGE_MULTIPLIER else 1.0)
+            (if (isBoss && !bossExposed) Bastion.PROTECTED_DAMAGE_MULTIPLIER else 1.0) *
+            (if (protectingCommander != null) Commander.ESCORT_DAMAGE_MULTIPLIER else 1.0)
         val absorbed = min(shield, incoming * shieldMultiplier)
         shield -= absorbed
         // Only damage spent against the shield gains the bonus; overflow uses the normal rate.
@@ -157,4 +165,11 @@ enum class EnemyType(
         "Vanguard", 105.0, 39.0, 20, 14, "Sunder breaks its shield faster. Rail bypasses its armor.",
         damageMultiplier = 0.75, shieldFraction = 0.30,
     ),
+}
+
+
+internal object Commander {
+    const val HEALTH_MULTIPLIER = 1.12
+    const val PROTECTION_RANGE = 105.0
+    const val ESCORT_DAMAGE_MULTIPLIER = 0.50
 }

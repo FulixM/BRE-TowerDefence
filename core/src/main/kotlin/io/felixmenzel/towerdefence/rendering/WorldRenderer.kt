@@ -124,6 +124,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         drawBoard(simulation)
         selectedTower?.let { drawRange(it.x.toFloat(), it.y.toFloat(), it.range.toFloat(), CYAN) }
         for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
+        shapes.color = COMMAND_LINK
+        for (escort in simulation.enemies) {
+            val commander = escort.protectingCommander ?: continue
+            shapes.rectLine(
+                commander.interpolatedX(alpha).toFloat(), commander.interpolatedY(alpha).toFloat(),
+                escort.interpolatedX(alpha).toFloat(), escort.interpolatedY(alpha).toFloat(), 2.5f,
+            )
+        }
         for (enemy in simulation.enemies) drawEnemy(enemy, simulation, alpha)
         simulation.echo.nextShot(simulation.state == GameState.PREPARING)?.let { shot ->
             ring(shot.fromX.toFloat(), shot.fromY.toFloat(), 30f, 1.5f, ECHO, 0.7f)
@@ -430,14 +438,14 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.color = towerColor(TowerType.BEACON)
             shapes.triangle(x - 4f, y - 19f, x + 4f, y - 19f, x, y - 13f)
         }
-        val radius = if (enemy.isBoss) 20f else when (enemy.type) {
+        val radius = if (enemy.isBoss) 20f else if (enemy.isCommander) 16f else when (enemy.type) {
             EnemyType.ARMORED, EnemyType.PLATED, EnemyType.VANGUARD -> 13f
             EnemyType.FAST -> 9f
             else -> 11f
         }
         val baseColor = if (enemy.isBoss) {
             if (enemy.bossExposed) BOSS_EXPOSED else BOSS_PROTECTED
-        } else when (enemy.type) {
+        } else if (enemy.isCommander) COMMAND_LINK else when (enemy.type) {
             EnemyType.ARMORED -> ORANGE
             EnemyType.FAST -> MAGENTA
             EnemyType.NORMAL -> CORAL
@@ -532,6 +540,13 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             shapes.rect(x + 18f, y + 20f, 8f, 2f)
         }
         if (enemy.isElite) drawEliteBrackets(x, y)
+        if (enemy.isCommander) {
+            shapes.color = COMMAND_LINK
+            diamond(x, y - 22f, 5f)
+        } else if (enemy.protectingCommander != null) {
+            shapes.color = COMMAND_LINK
+            shapes.rect(x - 6f, y - 18f, 12f, 2f)
+        }
     }
 
     private fun drawEliteBrackets(x: Float, y: Float) {
@@ -802,6 +817,7 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
         val CORAL = Color.valueOf("ff7d83")
         val MAGENTA = Color.valueOf("e28cdb")
         val ELITE = Color.valueOf("ffe08a")
+        val COMMAND_LINK = Color.valueOf("75eeb9")
         val BOSS_EXPOSED = Color.valueOf("ffcb6e")
         val BOSS_PROTECTED = Color.valueOf("e5a0fc")
         val DEFENSE_TRACK = Color.valueOf("080d17")

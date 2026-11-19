@@ -21,9 +21,9 @@ class MissionMasteryTest {
     }
 
     @Test
-    fun `bastion appears once in the corridor finale and a breach loses the mission`() {
+    fun `bastion appears once in corridor wave 15 and a breach loses the mission`() {
         val game = GameSimulation(seed = 583471)
-        repeat(game.totalWaves - 1) { clear(game) }
+        repeat(Bastion.WAVE - 1) { clear(game) }
         assertTrue(game.showBossWindows)
         assertTrue("Bastion" in game.nextWaveDescription)
         assertTrue(game.startWave().success)
