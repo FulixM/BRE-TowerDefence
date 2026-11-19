@@ -36,6 +36,8 @@ Winning The Corridor campaign unlocks **Relay Hunter** permanently in your local
 
 Commanders in waves 17 and 19 cut damage to their two nearby escorts in half. A green link marks the protection. It breaks if the commander falls or moves too far away.
 
+Open **Mission Setup → Workshop** to turn Classic campaign milestones into permanent research. Spend points on tower damage, reload, targeting range or starting gold. Higher difficulties also record mastery on easier ones. [Progression rules](docs/progression.md)
+
 Choose **Quick mission / 6 waves** in Mission Setup for a fixed 330-gold start and mixed squads on The Corridor. Quick missions have separate local bests for each difficulty.
 
 Once a **Cannon** reaches level 3, you can specialize it once. Wide trades firing rate for splash radius. Rapid fires more often with a smaller blast. Echoes retain each shot's recorded radius.

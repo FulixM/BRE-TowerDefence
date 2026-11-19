@@ -5,6 +5,8 @@ import io.felixmenzel.towerdefence.simulation.BattleMap
 import io.felixmenzel.towerdefence.simulation.Difficulty
 import io.felixmenzel.towerdefence.simulation.RailModule
 import io.felixmenzel.towerdefence.simulation.RemixScore
+import io.felixmenzel.towerdefence.simulation.ResearchLoadout
+import io.felixmenzel.towerdefence.simulation.ResearchProgress
 import io.felixmenzel.towerdefence.simulation.TremorModule
 import io.felixmenzel.towerdefence.simulation.Waypoint
 import io.felixmenzel.towerdefence.simulation.MissionMode
@@ -27,6 +29,7 @@ internal fun HudCanvas.drawMissionSetup(
     rank: Int,
     railModule: RailModule,
     relayHunterUnlocked: Boolean,
+    research: ResearchProgress,
     best: RemixScore?,
     feedback: String,
     feedbackError: Boolean,
@@ -37,6 +40,7 @@ internal fun HudCanvas.drawMissionSetup(
     toggleQuick: () -> Unit,
     cycleModule: () -> Unit,
     toggleRailModule: () -> Unit,
+    openWorkshop: () -> Unit,
     copyCode: () -> Unit,
     importCode: () -> Unit,
     launch: () -> Unit,
@@ -45,6 +49,8 @@ internal fun HudCanvas.drawMissionSetup(
     rect(140f, 46f, 720f, 549f, OVERLAY)
     rect(140f, 591f, 720f, 4f, CYAN)
     text("MISSION SETUP", 182f, 559f, 1.65f, WHITE)
+    button("Workshop / ${research.available} RP", 610f, 530f, 192f, 37f, scale = 0.82f, accent = CYAN,
+        action = openWorkshop)
     text("${mode.title} / ${mode.waveCount} waves", 182f, 524f, 0.9f, MUTED, 636f)
     val mapGap = 12f
     val mapWidth = (636f - mapGap * (BattleMap.entries.size - 1)) / BattleMap.entries.size
@@ -71,7 +77,10 @@ internal fun HudCanvas.drawMissionSetup(
         button(difficulty.title, 182f + index * 212f, 254f, 196f, 42f,
             accent = if (pendingDifficulty == difficulty) CYAN else BORDER) { selectDifficulty(difficulty) }
     }
-    text("${mode.startingGold(pendingDifficulty)} gold / ${pendingDifficulty.startingLives} base lives / Enemy health ${pendingDifficulty.healthMultiplier}x",
+    val gold = mode.startingGold(pendingDifficulty) + if (ResearchLoadout.appliesTo(mode, pendingSeed)) {
+        research.loadout.startingGoldBonus
+    } else 0
+    text("$gold gold / ${pendingDifficulty.startingLives} base lives / Enemy health ${pendingDifficulty.healthMultiplier}x",
         182f, 249f, 0.78f, CYAN, 636f)
     val quick = mode == MissionMode.QUICK
     button(if (pendingSeed == null) "Mode / Classic" else "Mode / Remix", 182f, 210f, 178f, 24f,

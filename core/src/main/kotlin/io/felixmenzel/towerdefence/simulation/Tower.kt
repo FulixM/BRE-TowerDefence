@@ -12,6 +12,7 @@ class Tower(
     val type: TowerType = TowerType.RAPID,
     val tremorModule: TremorModule = TremorModule.STANDARD,
     val railModule: RailModule = RailModule.STANDARD,
+    private val researchReloadFactor: Double = 1.0,
 ) {
     private val initialRange = range
     private val initialDamage = damage
@@ -49,7 +50,7 @@ class Tower(
     private fun damageAtLevel(level: Int) = initialDamage * (1.0 + (level - 1) * 0.65)
     private fun attackIntervalAtLevel(level: Int) =
         (initialAttackInterval * (1.0 - (level - 1) * 0.08) * cannonSpecialization.attackIntervalFactor *
-            railModule.intervalFactor(type)).toLong().coerceAtLeast(1L)
+            railModule.intervalFactor(type) * researchReloadFactor).toLong().coerceAtLeast(1L)
 
     internal fun upgrade() {
         val upgrade = checkNotNull(nextUpgrade)

@@ -31,6 +31,7 @@ internal data class MissionCheckpoint(
     val reports: List<WaveReport>,
     val mode: MissionMode = MissionMode.CAMPAIGN,
     val railModule: RailModule = RailModule.STANDARD,
+    val research: ResearchLoadout = ResearchLoadout.EMPTY,
 )
 
 internal data class TowerCheckpoint(
@@ -66,7 +67,7 @@ class MissionSaves(
 }
 
 private object MissionCheckpointCodec {
-    private const val VERSION = 3
+    private const val VERSION = 4
     private const val MAX_ENCODED_LENGTH = 1_000_000
     private const val MAX_TOWERS = 512
     private const val MAX_IMPACTS = 4096
@@ -139,6 +140,7 @@ private object MissionCheckpointCodec {
         }
         writeUTF(checkpoint.mode.name)
         writeUTF(checkpoint.railModule.name)
+        ResearchTrack.entries.forEach { writeInt(checkpoint.research.level(it)) }
     }
 
     private fun DataInputStream.readCheckpoint(): MissionCheckpoint {
@@ -170,6 +172,7 @@ private object MissionCheckpointCodec {
             kills, leaked, nextEnemyId, nextTowerId, eliteOffered, towers, echo, reports,
             if (version == 1) MissionMode.CAMPAIGN else MissionMode.valueOf(readUTF()),
             if (version < 3) RailModule.STANDARD else RailModule.valueOf(readUTF()),
+            if (version < 4) ResearchLoadout.EMPTY else ResearchLoadout(readInt(), readInt(), readInt(), readInt()),
         )
     }
 
@@ -242,6 +245,7 @@ private object MissionCheckpointCodec {
 
     private fun MissionCheckpoint.isValid(): Boolean {
         if (!mode.supports(map, seed) || wave !in 0 until mode.waveCount || tick !in 0..Long.MAX_VALUE / 2) return false
+        if (!ResearchLoadout.appliesTo(mode, seed) && research != ResearchLoadout.EMPTY) return false
         if (gold < 0 || lives !in 1..difficulty.startingLives || kills < 0 || leaked < 0) return false
         if (fieldRank < 1 || (fieldRank < TremorModule.REQUIRED_RANK && tremorModule != TremorModule.STANDARD)) return false
         if (useUpperRoute && map.alternatePath == null) return false
