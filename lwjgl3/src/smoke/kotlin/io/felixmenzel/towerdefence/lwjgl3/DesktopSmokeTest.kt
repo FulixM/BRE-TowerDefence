@@ -130,6 +130,7 @@ object DesktopSmokeTest {
                     key(Input.Keys.NUM_1)
                 }
                 2 -> {
+                    writeScreenshot("-build-guides")
                     click(140f, 208f + DefenseScreen.BOARD_Y)
                     check(simulation.towers.size == 1) { "Valid mouse placement did not build" }
                     check(simulation.gold == GameSimulation.START_GOLD - TowerType.RAPID.cost)
