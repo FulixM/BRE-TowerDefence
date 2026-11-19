@@ -38,7 +38,7 @@ class BalanceSimulationTest {
         assertEquals(game.totalWaves, game.wave)
         assertTrue(game.lives > 0)
         assertTrue(game.gold >= 0)
-        assertEquals(TowerType.entries.toSet(), game.towers.map { it.type }.toSet())
+        assertEquals(TowerType.entries.filter(game::isUnlocked).toSet(), game.towers.map { it.type }.toSet())
         assertTrue(game.towers.any { it.level > 1 })
     }
 
@@ -67,10 +67,20 @@ class BalanceSimulationTest {
                 assertEquals(game.totalWaves, game.wave, mission)
                 assertTrue(game.lives > 0, mission)
                 assertTrue(game.gold >= 0, mission)
-                assertEquals(TowerType.entries.toSet(), game.towers.map { it.type }.toSet(), mission)
+                assertEquals(TowerType.entries.filter(game::isUnlocked).toSet(), game.towers.map { it.type }.toSet(), mission)
                 assertTrue(game.towers.any { it.level > 1 }, mission)
             }
         }
+    }
+
+    @Test
+    fun `twin locks remix can be cleared on veteran using the unlocked tremor`() {
+        val plan = twinLocksPlan + Placement(TowerType.TREMOR, 545.0, 350.0)
+        val game = playCampaign(GameSimulation(BattleMap.TWIN_LOCKS, Difficulty.VETERAN, seed = 583471, fieldRank = 2)) {
+            fortifyUsing(it, plan)
+        }
+        assertEquals(GameState.WON, game.state)
+        assertTrue(game.towers.any { it.type == TowerType.TREMOR })
     }
 
     @Test
@@ -177,6 +187,7 @@ class BalanceSimulationTest {
         BattleMap.CORRIDOR -> buildPlan
         BattleMap.SWITCHBACK -> switchbackPlan
         BattleMap.CROSSWIND -> crosswindPlan
+        BattleMap.TWIN_LOCKS -> twinLocksPlan
     }
 
     private data class Placement(val type: TowerType, val x: Double, val y: Double)
@@ -227,5 +238,21 @@ class BalanceSimulationTest {
         Placement(TowerType.CANNON, 752.0, 90.0),
         Placement(TowerType.ARC, 414.0, 429.0),
         Placement(TowerType.RAIL, 285.0, 352.0),
+    )
+
+    private val twinLocksPlan = listOf(
+        Placement(TowerType.RAPID, 150.0, 245.0),
+        Placement(TowerType.RAPID, 275.0, 240.0),
+        Placement(TowerType.CANNON, 330.0, 220.0),
+        Placement(TowerType.FROST, 482.0, 223.0),
+        Placement(TowerType.RAIL, 380.0, 363.0),
+        Placement(TowerType.ARC, 495.0, 356.0),
+        Placement(TowerType.VENOM, 580.0, 228.0),
+        Placement(TowerType.INFERNO, 603.0, 345.0),
+        Placement(TowerType.BEACON, 720.0, 374.0),
+        Placement(TowerType.CANNON, 785.0, 374.0),
+        Placement(TowerType.RAPID, 127.0, 365.0),
+        Placement(TowerType.CANNON, 603.0, 417.0),
+        Placement(TowerType.SUNDER, 730.0, 490.0),
     )
 }

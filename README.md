@@ -20,6 +20,10 @@ Use **Mission** to choose a route and difficulty. The mission screen previews th
 
 **Crosswind Pass** adds two diagonal ramps with space to build between the lanes. The **Sunder** tower strips shields quickly. **Vanguards** in the final waves carry shields and armor, so pairing Sunder with Rail covers both defenses.
 
+**Twin Locks** adds two tight turns in the middle of the route. The **Tremor** tower (`0`) slows groups around an impact and unlocks at field rank 2. Finished missions award profile XP for cleared waves, plus a victory bonus. The profile saves locally and carries over between missions.
+
+Choose **Remix** in mission setup to vary enemy order and spawn spacing. Reroll for a new seed, or retry a mission to keep its seed and timings.
+
 Start each wave when ready. The bottom bar previews the next wave, and the enemy guide explains when each enemy type appears and how to counter it. Survive 15 waves to win. The final five preview named formations built around shields, armor, regeneration and mixed assaults.
 
 Enemy health appears green and turns coral when critical. Cyan bars show remaining shield. Amber segments indicate persistent damage resistance, which Rail bypasses. A lilac plus shows active healing. The enemy guide includes the same symbols.
@@ -27,7 +31,7 @@ Enemy health appears green and turns coral when critical. Cyan bars show remaini
 | Input | Action |
 | --- | --- |
 | Mouse | Choose/build/select towers and use HUD buttons |
-| 1–9 | Choose a tower in catalogue order |
+| 1–9 / 0 | Choose a tower in catalogue order |
 | M | Open mission setup |
 | G | Read the enemy guide and pause the current wave |
 | E | Arm or disarm the selected tower as the wave recorder |

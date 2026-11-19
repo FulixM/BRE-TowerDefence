@@ -15,8 +15,11 @@ import io.felixmenzel.towerdefence.ui.HudPalette.WHITE
 internal fun HudCanvas.drawMissionSetup(
     pendingMap: BattleMap,
     pendingDifficulty: Difficulty,
+    pendingSeed: Int?,
     selectMap: (BattleMap) -> Unit,
     selectDifficulty: (Difficulty) -> Unit,
+    toggleRemix: () -> Unit,
+    reroll: () -> Unit,
     launch: () -> Unit,
     cancel: () -> Unit,
 ) {
@@ -46,8 +49,13 @@ internal fun HudCanvas.drawMissionSetup(
             accent = if (pendingDifficulty == difficulty) CYAN else BORDER) { selectDifficulty(difficulty) }
     }
     text("${pendingDifficulty.startingGold} gold / ${pendingDifficulty.startingLives} base lives / Enemy health ${pendingDifficulty.healthMultiplier}x",
-        182f, 236f, 0.88f, CYAN, 636f)
-    text("Launch starts a fresh defence. Cancel keeps your current mission.", 182f, 220f, 0.82f, MUTED, 636f)
+        182f, 249f, 0.78f, CYAN, 636f)
+    button(if (pendingSeed == null) "Mode / Classic" else "Mode / Remix", 182f, 210f, 178f, 24f,
+        accent = if (pendingSeed == null) BORDER else CYAN, scale = 0.75f, action = toggleRemix)
+    if (pendingSeed != null) {
+        button("Reroll seed $pendingSeed", 370f, 210f, 182f, 24f, scale = 0.75f, action = reroll)
+        text("Retry keeps the seed.", 563f, 228f, 0.75f, MUTED)
+    } else text("Remix varies enemy order and spawn timing.", 374f, 228f, 0.75f, MUTED)
     button("Launch mission [Enter]", 182f, 160f, 300f, 48f, accent = CYAN) { launch() }
     button("Cancel [Esc]", 502f, 160f, 300f, 48f) { cancel() }
 }

@@ -8,6 +8,7 @@ import io.felixmenzel.towerdefence.simulation.EnemyType.REGENERATING
 import io.felixmenzel.towerdefence.simulation.EnemyType.SHIELDED
 import io.felixmenzel.towerdefence.simulation.EnemyType.VANGUARD
 import kotlin.math.roundToInt
+import kotlin.random.Random
 
 internal object Waves {
     private const val OPENING_WAVES = 10
@@ -38,6 +39,14 @@ internal object Waves {
     fun intervalTicks(wave: Int): Long = assault(wave)?.intervalTicks ?:
         ((0.85 - (wave - 1) * 0.045).coerceAtLeast(0.45) * GameSimulation.UPS).roundToInt().toLong()
 
+    fun plan(wave: Int, seed: Int?): WavePlan {
+        val random = seed?.let { Random(it.toLong() + wave * 1009L) }
+        val enemies = List(enemyCount(wave)) { enemyType(wave, it) }
+        val interval = intervalTicks(wave)
+        return if (random == null) WavePlan(enemies, List(enemies.size) { interval })
+        else WavePlan(enemies.shuffled(random), List(enemies.size) { interval + random.nextInt(-4, 5) })
+    }
+
     fun healthMultiplier(wave: Int): Double {
         val openingIndex = minOf(wave, OPENING_WAVES) - 1
         val openingHealth = 1.0 + openingIndex * 0.22 + openingIndex * openingIndex * 0.045
@@ -57,5 +66,12 @@ internal object Waves {
             wave >= FAST.firstWave && index % 3 == 2 -> FAST
             else -> NORMAL
         }
+    }
+}
+
+
+internal data class WavePlan(val enemies: List<EnemyType>, val intervals: List<Long>) {
+    val description: String = enemies.groupingBy { it }.eachCount().let { counts ->
+        EnemyType.entries.mapNotNull { type -> counts[type]?.let { "$it ${type.title}" } }.joinToString(" / ")
     }
 }

@@ -74,7 +74,10 @@ class Tower(
         val target = selectTarget(enemies) ?: return null
 
         val hits = when (type) {
-            TowerType.CANNON -> enemies.filter { it.canBeHit && within(it, target, SPLASH_RADIUS) }
+            TowerType.CANNON, TowerType.TREMOR -> {
+                val radius = if (type == TowerType.TREMOR) TREMOR_RADIUS else SPLASH_RADIUS
+                enemies.filter { it.canBeHit && within(it, target, radius) }
+            }
             TowerType.INFERNO -> enemies.filter { it.canBeHit && distanceSquaredTo(it) <= range * range }
             TowerType.ARC -> chainFrom(target, enemies)
             else -> listOf(target)
@@ -124,6 +127,7 @@ class Tower(
     companion object {
         const val MAX_LEVEL = 3
         const val SPLASH_RADIUS = 58.0
+        const val TREMOR_RADIUS = 44.0
         private const val ARC_JUMP_RANGE = 76.0
 
     }
@@ -136,6 +140,7 @@ enum class TowerType(
     val baseRange: Double,
     val baseDamage: Double,
     val baseAttackIntervalTicks: Long,
+    val requiredRank: Int = 1,
 ) {
     RAPID("Pulse", 75, "Fast single-target fire", 135.0, 12.0, 18L),
     CANNON("Cannon", 120, "Area damage against clusters", 155.0, 34.0, 66L),
@@ -146,6 +151,7 @@ enum class TowerType(
     INFERNO("Inferno", 110, "Hits every enemy in its short reach", 84.0, 12.0, 24L),
     BEACON("Beacon", 85, "Marks a target for 25% more damage", 150.0, 8.0, 56L),
     SUNDER("Sunder", 115, "Deals triple damage to shields", 145.0, 22.0, 36L),
+    TREMOR("Tremor", 135, "Slows groups around the impact", 128.0, 10.0, 45L, requiredRank = 2),
 }
 
 /** A visual trace of an already resolved hit, not a second source of damage. */
@@ -180,6 +186,7 @@ internal fun applyTowerHit(type: TowerType, enemy: Enemy, damage: Double, impact
     if (!enemy.isAlive) return
     when (type) {
         TowerType.FROST -> enemy.applySlow(0.55, 1.5)
+        TowerType.TREMOR -> enemy.applySlow(0.70, 1.1)
         TowerType.VENOM -> enemy.applyPoison(damage, 3.0)
         TowerType.BEACON -> enemy.mark()
         else -> Unit

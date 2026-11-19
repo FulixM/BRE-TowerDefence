@@ -49,8 +49,10 @@ object DesktopSmokeTest {
         Lwjgl3Application(SmokeApplication(), config)
     }
 
+    private const val PROFILE_NAME = "bre-tower-defence-smoke"
+
     private class SmokeApplication : ApplicationAdapter() {
-        private val game = Main()
+        private val game = Main(PROFILE_NAME)
         private lateinit var screen: DefenseScreen
         private lateinit var simulation: GameSimulation
         private lateinit var viewport: FitViewport
@@ -58,6 +60,7 @@ object DesktopSmokeTest {
         private var frame = 0
         private var missionSetupStage = 0
         private var missionSetupFrames = 0
+        private var remixSeed: Int? = null
         private var frozenTick = 0L
         private var expectedRefund = 0
         private var screenshotWritten = false
@@ -65,6 +68,8 @@ object DesktopSmokeTest {
         private var normalNativeCapHeight = 0f
 
         override fun create() {
+            Gdx.app.getPreferences(PROFILE_NAME).clear()
+            Gdx.app.getPreferences(PROFILE_NAME).flush()
             game.create()
             screen = game.getScreen<DefenseScreen>()
             simulation = privateField(screen, "simulation")
@@ -79,7 +84,7 @@ object DesktopSmokeTest {
         override fun render() {
             game.render()
             simulation = privateField(screen, "simulation")
-            if (missionSetupStage < 12) {
+            if (missionSetupStage < 18) {
                 checkMissionPicker()
                 return
             }
@@ -249,8 +254,22 @@ object DesktopSmokeTest {
                     check(simulation.enemies.isNotEmpty())
                     writeScreenshot()
                     checkEnemyDefenses()
+                    finishProfileMission()
+                }
+                302 -> {
+                    check(Gdx.app.getPreferences(PROFILE_NAME).getInteger("xp") == 120) {
+                        "A lost mission did not persist XP exactly once"
+                    }
+                    key(Input.Keys.ENTER)
+                }
+                303 -> {
+                    check(simulation.fieldRank == 2)
+                    key(Input.Keys.NUM_0)
+                    check(privateField<TowerType>(screen, "buildType") == TowerType.TREMOR)
+                    click(150f, 220f + DefenseScreen.BOARD_Y)
+                    check(simulation.towers.single().type == TowerType.TREMOR)
                     screenshotWritten = true
-                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, and enemy defenses; screenshots saved.")
+                    println("Desktop smoke passed: mission selection, difficulty, target priorities, placement, upgrade, sale, waves, pause, restart, resize, letterboxing, enemy defenses, Remix, and field rank; screenshots saved.")
                     Gdx.app.exit()
                 }
             }
@@ -266,7 +285,7 @@ object DesktopSmokeTest {
                 }
                 1 -> {
                     check(simulation.tick == frozenTick) { "Mission setup advanced simulation" }
-                    click(500f, 461f) // Switchback.
+                    click(419f, 461f) // Switchback.
                     click(704f, 275f) // Veteran.
                 }
                 2 -> {
@@ -312,7 +331,7 @@ object DesktopSmokeTest {
                 }
                 7 -> key(Input.Keys.M)
                 8 -> {
-                    click(718f, 461f) // Crosswind Pass.
+                    click(580f, 461f) // Crosswind Pass.
                     click(332f, 184f)
                     simulation = privateField(screen, "simulation")
                     check(simulation.battleMap == BattleMap.CROSSWIND)
@@ -339,6 +358,39 @@ object DesktopSmokeTest {
                     check(simulation.battleMap == BattleMap.CORRIDOR)
                     checkFreshMission()
                 }
+                12 -> key(Input.Keys.M)
+                13 -> {
+                    click(742f, 461f) // Twin Locks.
+                    click(270f, 221f) // Enable Remix.
+                }
+                14 -> {
+                    val before = privateField<Int>(screen, "pendingSeed")
+                    click(452f, 221f) // Reroll.
+                    remixSeed = privateField<Int>(screen, "pendingSeed")
+                    check(remixSeed != before)
+                    click(332f, 184f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.battleMap == BattleMap.TWIN_LOCKS && simulation.seed == remixSeed)
+                }
+                15 -> {
+                    key(Input.Keys.NUM_0)
+                    check(privateField<TowerType?>(screen, "buildType") == null)
+                    writeScreenshot("-twin-locks")
+                    key(Input.Keys.R)
+                }
+                16 -> {
+                    key(Input.Keys.ENTER)
+                    check(simulation.seed == remixSeed)
+                    key(Input.Keys.M)
+                }
+                17 -> {
+                    click(280f, 461f)
+                    click(270f, 221f) // Return to Classic for the original smoke path.
+                    click(332f, 184f)
+                    simulation = privateField(screen, "simulation")
+                    check(simulation.battleMap == BattleMap.CORRIDOR && simulation.seed == null)
+                    checkFreshMission()
+                }
             }
         }
 
@@ -362,6 +414,23 @@ object DesktopSmokeTest {
             check(simulation.state == GameState.PREPARING && simulation.wave == 0)
             check(simulation.gold == GameSimulation.START_GOLD && simulation.lives == GameSimulation.START_LIVES)
             check(simulation.towers.isEmpty() && simulation.enemies.isEmpty() && simulation.shots.isEmpty())
+        }
+
+        private fun finishProfileMission() {
+            simulation.restart()
+            // Isolate profile rewards from the balance of a particular build.
+            repeat(5) {
+                check(simulation.startWave().success)
+                while (simulation.state == GameState.RUNNING) {
+                    simulation.enemies.forEach { it.takeDamage(10000.0, piercesArmor = true) }
+                    simulation.update()
+                }
+            }
+            while (simulation.state != GameState.LOST) {
+                check(simulation.startWave().success)
+                while (simulation.state == GameState.RUNNING) simulation.update()
+            }
+            check(simulation.wave == 7)
         }
 
         private fun checkEnemyDefenses() {
@@ -433,6 +502,8 @@ object DesktopSmokeTest {
 
         override fun dispose() {
             game.dispose()
+            Gdx.app.getPreferences(PROFILE_NAME).clear()
+            Gdx.app.getPreferences(PROFILE_NAME).flush()
             check(screenshotWritten) { "Smoke application closed before completing all checks" }
         }
 

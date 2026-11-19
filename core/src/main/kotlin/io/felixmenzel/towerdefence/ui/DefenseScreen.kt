@@ -12,6 +12,7 @@ import com.badlogic.gdx.utils.viewport.FitViewport
 import io.felixmenzel.towerdefence.rendering.ScreenFonts
 import io.felixmenzel.towerdefence.rendering.WorldRenderer
 import io.felixmenzel.towerdefence.simulation.ActionResult
+import io.felixmenzel.towerdefence.simulation.FieldProfile
 import io.felixmenzel.towerdefence.simulation.FixedStepLoop
 import io.felixmenzel.towerdefence.simulation.GameSimulation
 import io.felixmenzel.towerdefence.simulation.GameState
@@ -30,9 +31,10 @@ import io.felixmenzel.towerdefence.ui.HudPalette.PANEL
 import io.felixmenzel.towerdefence.ui.HudPalette.RED
 import io.felixmenzel.towerdefence.ui.HudPalette.WHITE
 import ktx.app.KtxScreen
+import kotlin.random.Random
 
 /** Owns presentation and input; all game rules remain in GameSimulation. */
-class DefenseScreen : KtxScreen {
+class DefenseScreen(private val profile: FieldProfile = FieldProfile()) : KtxScreen {
     private val camera = OrthographicCamera()
     private val viewport = FitViewport(WIDTH, HEIGHT, camera)
     private val fonts = ScreenFonts()
@@ -40,7 +42,9 @@ class DefenseScreen : KtxScreen {
     private val hud = HudCanvas(fonts)
     private val worldProjection = Matrix4()
     private val pointer = Vector2()
-    private var simulation = GameSimulation()
+    private var simulation = GameSimulation(fieldRank = profile.rank)
+    private var resultXp: Int? = null
+    private var profileSaveFailed = false
     private val loop = FixedStepLoop { simulation.update() }
     private var selectedTowerId: Long? = null
     private var buildType: TowerType? = null
@@ -52,6 +56,7 @@ class DefenseScreen : KtxScreen {
     private var missionLaunchConfirmation = false
     private var pendingMap = simulation.battleMap
     private var pendingDifficulty = simulation.difficulty
+    private var pendingSeed = simulation.seed
     private var message = "Choose a tower, place it beside the route, then start wave 1."
     private var messageError = false
     private var messageTime = 0f
@@ -139,6 +144,7 @@ class DefenseScreen : KtxScreen {
 
     private fun towerShortcut(keycode: Int): TowerType? {
         val index = when (keycode) {
+            Input.Keys.NUM_0, Input.Keys.NUMPAD_0 -> 9
             in Input.Keys.NUM_1..Input.Keys.NUM_9 -> keycode - Input.Keys.NUM_1
             in Input.Keys.NUMPAD_1..Input.Keys.NUMPAD_9 -> keycode - Input.Keys.NUMPAD_1
             else -> return null
@@ -167,6 +173,15 @@ class DefenseScreen : KtxScreen {
             // Advancing separately preserves the loop's long-frame guard at both speeds.
             loop.advance(delta.toDouble())
             if (doubleSpeed) loop.advance(delta.toDouble())
+        }
+        if (isFinished() && resultXp == null) {
+            resultXp = try {
+                profile.award(simulation.state, simulation.wave)
+            } catch (failure: RuntimeException) {
+                Gdx.app.error("Profile", "Unable to save mission XP", failure)
+                profileSaveFailed = true
+                0
+            }
         }
         viewport.apply()
         fonts.updateDensity(viewport.screenWidth.toFloat() / WIDTH *
@@ -204,6 +219,10 @@ class DefenseScreen : KtxScreen {
     }
 
     private fun choose(type: TowerType) {
+        if (!simulation.isUnlocked(type)) {
+            notify("${type.title} unlocks at field rank ${type.requiredRank}.", true)
+            return
+        }
         buildType = type
         selectedTowerId = null
         notify("${type.title}: click free ground to build. Right-click or Esc cancels.")
@@ -220,7 +239,11 @@ class DefenseScreen : KtxScreen {
     }
 
     private fun restart() {
-        simulation.restart()
+        if (simulation.fieldRank != profile.rank) {
+            simulation = GameSimulation(simulation.battleMap, simulation.difficulty, simulation.seed, profile.rank)
+        } else simulation.restart()
+        resultXp = null
+        profileSaveFailed = false
         loop.reset()
         paused = false
         doubleSpeed = false
@@ -235,6 +258,7 @@ class DefenseScreen : KtxScreen {
     private fun openMissionSetup() {
         pendingMap = simulation.battleMap
         pendingDifficulty = simulation.difficulty
+        pendingSeed = simulation.seed
         missionSetup = true
         missionLaunchConfirmation = false
         restartConfirmation = false
@@ -253,8 +277,13 @@ class DefenseScreen : KtxScreen {
         } else launchMission()
     }
 
+    private fun newSeed(): Int {
+        val next = Random.nextInt(100000, 1000000)
+        return if (next == pendingSeed) 100000 + (next - 99999) % 900000 else next
+    }
+
     private fun launchMission() {
-        simulation = GameSimulation(pendingMap, pendingDifficulty)
+        simulation = GameSimulation(pendingMap, pendingDifficulty, pendingSeed, profile.rank)
         restart()
         notify("${pendingMap.title} / ${pendingDifficulty.title}. Build towers, then start wave 1.")
     }
@@ -331,8 +360,10 @@ class DefenseScreen : KtxScreen {
         text(wavePreview(), 24f, 35f, 0.87f, WHITE, 500f)
         val nextLabel = if (preparing) "Start wave ${simulation.wave + 1} [Space]" else "${simulation.enemies.size} on route  /  ${simulation.remainingToSpawn} incoming"
         button(nextLabel, 565f, 20f, 310f, 43f, preparing, CYAN) { report(simulation.startWave()) }
-        text("1-9 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
+        text("1-9 / 0 Build   U Upgrade   T Target", 922f, 59f, 0.78f, MUTED)
         text("Space Wave/Pause   P Pause   F Speed", 922f, 36f, 0.75f, MUTED)
+        val seedLabel = simulation.seed?.let { "  /  Seed $it" }.orEmpty()
+        text("Rank ${profile.rank}  /  ${profile.rankXp} XP$seedLabel", 922f, 15f, 0.72f, CYAN)
 
         // Feedback sits inside the board's unused upper margin, without hiding the route.
         val placementReason = if (buildType != null && cursor != null && !isModal() &&
@@ -366,9 +397,11 @@ class DefenseScreen : KtxScreen {
         }
         if (missionSetup && !missionLaunchConfirmation) {
             drawMissionSetup(
-                pendingMap, pendingDifficulty,
+                pendingMap, pendingDifficulty, pendingSeed,
                 selectMap = { pendingMap = it },
                 selectDifficulty = { pendingDifficulty = it },
+                toggleRemix = { pendingSeed = if (pendingSeed == null) newSeed() else null },
+                reroll = { pendingSeed = newSeed() },
                 launch = ::requestLaunch,
                 cancel = ::closeMissionSetup,
             )
@@ -411,6 +444,11 @@ class DefenseScreen : KtxScreen {
             button("Keep playing [Esc]", 502f, 267f, 300f, 52f) { restartConfirmation = false }
         } else if (isFinished()) {
             text("${simulation.battleMap.title} / ${simulation.difficulty.title}   |   ${simulation.kills} defeated / ${simulation.leakedEnemies} escaped", 182f, 364f, 0.95f, CYAN, 636f)
+            val xpLabel = if (profileSaveFailed) "Could not save XP" else "+${resultXp ?: 0} XP  /  Field rank ${profile.rank}"
+            val unlocked = TowerType.entries.filter { it.requiredRank in (simulation.fieldRank + 1)..profile.rank }
+            val unlockLabel = unlocked.joinToString { it.title }
+            text(if (unlockLabel.isEmpty()) xpLabel else "$xpLabel  /  Unlocked $unlockLabel",
+                182f, 336f, 0.92f, GOLD, 636f)
             button("Retry mission [Enter / R]", 182f, 267f, 300f, 52f, accent = CYAN) { restart() }
             button("Choose mission [M]", 502f, 267f, 300f, 52f) { openMissionSetup() }
         } else {
