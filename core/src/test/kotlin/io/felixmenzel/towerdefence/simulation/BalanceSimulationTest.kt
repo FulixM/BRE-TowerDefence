@@ -59,7 +59,9 @@ class BalanceSimulationTest {
         for (battleMap in BattleMap.entries) {
             for (difficulty in Difficulty.entries) {
                 val game = playCampaign(GameSimulation(battleMap, difficulty)) {
-                    fortifyUsing(it, planFor(battleMap))
+                    val plan = planFor(battleMap)
+                    val reinforcements = if (it.wave >= Bastion.WAVE) lateReinforcements(battleMap) else emptyList()
+                    fortifyUsing(it, plan + reinforcements)
                 }
 
                 val mission = "$battleMap / $difficulty"
@@ -141,7 +143,7 @@ class BalanceSimulationTest {
     @Test
     fun `late waves before the finale reward expanding beyond a smaller defense on veteran`() {
         for (map in listOf(BattleMap.CORRIDOR, BattleMap.SWITCHBACK)) {
-            val beforeFinale = GameSimulation.TOTAL_WAVES - 1
+            val beforeFinale = Bastion.WAVE - 1
             fun play(difficulty: Difficulty) = playCampaign(GameSimulation(map, difficulty), throughWave = beforeFinale) {
                 fortifyUsing(it, planFor(map).take(8))
             }
@@ -252,6 +254,29 @@ class BalanceSimulationTest {
         Placement(TowerType.CANNON, 700.0, 30.0),
         Placement(TowerType.SUNDER, 435.0, 265.0),
     )
+
+    private fun lateReinforcements(map: BattleMap) = when (map) {
+        BattleMap.CORRIDOR -> listOf(
+            Placement(TowerType.ARC, 765.0, 158.0),
+            Placement(TowerType.RAIL, 555.0, 165.0),
+            Placement(TowerType.CANNON, 775.0, 38.0),
+        )
+        BattleMap.SWITCHBACK -> listOf(
+            Placement(TowerType.ARC, 777.0, 258.0),
+            Placement(TowerType.RAIL, 670.0, 206.0),
+            Placement(TowerType.CANNON, 781.0, 155.0),
+        )
+        BattleMap.CROSSWIND -> listOf(
+            Placement(TowerType.ARC, 636.0, 270.0),
+            Placement(TowerType.RAIL, 670.0, 79.0),
+            Placement(TowerType.CANNON, 800.0, 195.0),
+        )
+        BattleMap.TWIN_LOCKS -> listOf(
+            Placement(TowerType.ARC, 679.0, 493.0),
+            Placement(TowerType.RAIL, 850.0, 385.0),
+            Placement(TowerType.CANNON, 775.0, 505.0),
+        )
+    }
 
     private val crosswindPlan = listOf(
         Placement(TowerType.RAPID, 125.0, 185.0),

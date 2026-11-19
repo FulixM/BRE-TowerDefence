@@ -580,6 +580,7 @@ class DefenseScreen(
                 "Bastion exposed: damage is no longer reduced."
             } else "Bastion protected: deal full damage in the marked lanes."
             preparing && simulation.showBossWindows -> "Bastion must fall before the core. Build near the two marked damage windows."
+            simulation.hasCommanders(briefedWave) -> "Green links mark protected escorts. Take out their commander to remove the protection."
             simulation.wave == 0 -> message
             else -> "Open the enemy guide [G] to check enemy abilities and counters."
         }

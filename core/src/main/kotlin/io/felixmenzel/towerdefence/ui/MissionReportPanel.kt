@@ -42,9 +42,10 @@ private fun HudCanvas.drawReportColumn(x: Float, waves: IntRange, reports: Map<I
     text("WAVE", x + 11f, 448f, 0.75f, MUTED)
     text("LEAKS", x + 148f, 448f, 0.75f, MUTED)
     text("ECHO HITS", x + 212f, 448f, 0.75f, MUTED)
+    val spacing = if (waves.count() > 8) 24f else 28f
     for ((index, wave) in waves.withIndex()) {
         val report = reports[wave]
-        val y = 410f - index * 28f
+        val y = 410f - index * spacing
         val accent = when {
             report == null -> BORDER
             !report.cleared -> RED
@@ -58,8 +59,8 @@ private fun HudCanvas.drawReportColumn(x: Float, waves: IntRange, reports: Map<I
             report.elite -> "  Elite"
             else -> ""
         }
-        rect(x, y, 310f, 24f, if (report == null) BACKGROUND else PANEL)
-        rect(x, y, 2f, 24f, accent)
+        rect(x, y, 310f, spacing - 4f, if (report == null) BACKGROUND else PANEL)
+        rect(x, y, 2f, spacing - 4f, accent)
         text(wave.toString().padStart(2, '0') + status, x + 11f, y + 18f, 0.77f,
             if (status.isNotEmpty()) accent else if (report == null) MUTED else WHITE)
         text(report?.leaked?.toString() ?: "-", x + 148f, y + 18f, 0.77f,

@@ -120,18 +120,18 @@ class RosterTest {
     @Test
     fun `late assaults use distinct formations and increase in health without the opening curve`() {
         val total = GameSimulation.TOTAL_WAVES
-        assertEquals(15, total)
+        assertEquals(20, total)
         val assaults = (11..total).map { wave ->
             (0 until GameSimulation.enemyCount(wave)).map { GameSimulation.enemyType(wave, it) }
         }
-        assertEquals(listOf(30, 30, 32, 32, 36), assaults.map { it.size })
+        assertEquals(listOf(30, 30, 32, 32, 36, 36, 36, 40, 40, 42), assaults.map { it.size })
         assertEquals(listOf(EnemyType.SHIELDED, EnemyType.ARMORED, EnemyType.REGENERATING, EnemyType.SHIELDED), assaults.take(4).map { it.first() })
         assertEquals(assaults.size, assaults.toSet().size)
         assertTrue(assaults.last().containsAll(EnemyType.entries))
         assertEquals(27L, GameSimulation.spawnIntervalTicks(10))
-        assertEquals(24L, GameSimulation.spawnIntervalTicks(total))
+        assertEquals(23L, GameSimulation.spawnIntervalTicks(total))
         assertEquals(6.625, Waves.healthMultiplier(10), 1e-9)
-        assertEquals(9.625, Waves.healthMultiplier(total), 1e-9)
+        assertEquals(12.625, Waves.healthMultiplier(total), 1e-9)
     }
 
     @Test

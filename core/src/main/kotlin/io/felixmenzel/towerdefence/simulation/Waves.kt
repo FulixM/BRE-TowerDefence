@@ -25,7 +25,12 @@ internal object Waves {
         Assault("Armored column", 27, 5, listOf(ARMORED, PLATED, PLATED, NORMAL, ARMORED, FAST)),
         Assault("Reaver packs", 25, 4, listOf(REGENERATING, FAST, REGENERATING, NORMAL, FAST, REGENERATING, SHIELDED, FAST)),
         Assault("Siege line", 25, 4, listOf(SHIELDED, PLATED, ARMORED, FAST, SHIELDED, PLATED, REGENERATING, VANGUARD)),
-        Assault("Final assault", 24, 4, listOf(ARMORED, SHIELDED, PLATED, FAST, REGENERATING, NORMAL, VANGUARD, PLATED, FAST)),
+        Assault("First siege", 24, 4, listOf(ARMORED, SHIELDED, PLATED, FAST, REGENERATING, NORMAL, VANGUARD, PLATED, FAST)),
+        Assault("Reinforcements", 24, 4, listOf(FAST, NORMAL, FAST, SHIELDED, PLATED, REGENERATING, FAST, ARMORED, VANGUARD)),
+        Assault("Command patrol", 25, 4, listOf(ARMORED, PLATED, SHIELDED, FAST, NORMAL, REGENERATING, PLATED, FAST, VANGUARD)),
+        Assault("Closing ranks", 23, 4, listOf(SHIELDED, FAST, ARMORED, NORMAL, FAST, REGENERATING, PLATED, VANGUARD, FAST, NORMAL)),
+        Assault("Double command", 25, 4, listOf(ARMORED, SHIELDED, PLATED, FAST, REGENERATING, NORMAL, PLATED, VANGUARD, FAST, NORMAL)),
+        Assault("Last stand", 23, 6, listOf(ARMORED, FAST, NORMAL, SHIELDED, PLATED, REGENERATING, VANGUARD)),
     )
 
     val total: Int = OPENING_WAVES + lateWaves.size
@@ -43,8 +48,23 @@ internal object Waves {
         val random = seed?.let { Random(it.toLong() + wave * 1009L) }
         val enemies = List(enemyCount(wave)) { enemyType(wave, it) }
         val interval = intervalTicks(wave)
-        return if (random == null) WavePlan(enemies, List(enemies.size) { interval })
-        else WavePlan(enemies.shuffled(random), List(enemies.size) { interval + random.nextInt(-4, 5) })
+        val ordered = if (random == null) enemies else enemies.shuffled(random)
+        val intervals = List(enemies.size) { interval + (random?.nextInt(-4, 5) ?: 0) }
+        val commanderSlots = when (wave) {
+            17 -> listOf(0)
+            19 -> listOf(0, enemies.size / 2)
+            else -> emptyList()
+        }
+        if (commanderSlots.isEmpty()) return WavePlan(ordered, intervals)
+        val formation = ordered.toMutableList()
+        // Move an existing Bulwark into each command slot, preserving the Remix roster and count.
+        for (slot in commanderSlots) {
+            if (formation[slot] == ARMORED) continue
+            val bulwark = formation.indices.first { it !in commanderSlots && formation[it] == ARMORED }
+            formation[bulwark] = formation[slot]
+            formation[slot] = ARMORED
+        }
+        return WavePlan(formation, intervals, commanderSlots)
     }
 
     fun healthMultiplier(wave: Int): Double {
@@ -105,16 +125,26 @@ private val quickWaves = listOf(
     QuickWave("Final surge", 4.4, 26, 4, ARMORED, FAST, VANGUARD, SHIELDED, REGENERATING, PLATED),
 )
 
-internal data class WavePlan(val enemies: List<EnemyType>, val intervals: List<Long>) {
+internal data class WavePlan(
+    val enemies: List<EnemyType>,
+    val intervals: List<Long>,
+    val commanderSlots: List<Int> = emptyList(),
+) {
+    fun commanderFor(index: Int): Int? = commanderSlots.firstOrNull { index in it..it + 2 }
+
     val description: String = describe()
 
     fun describe(replaceBulwarkWithBoss: Boolean = false): String {
         val counts = enemies.groupingBy { it }.eachCount()
         val groups = EnemyType.entries.mapNotNull { type ->
-            val count = (counts[type] ?: 0) - if (replaceBulwarkWithBoss && type == ARMORED) 1 else 0
+            val replacements = if (type == ARMORED) commanderSlots.size + if (replaceBulwarkWithBoss) 1 else 0 else 0
+            val count = (counts[type] ?: 0) - replacements
             if (count > 0) "$count ${type.title}" else null
         }
-        val labels = if (replaceBulwarkWithBoss) listOf("Bastion") + groups else groups
-        return labels.joinToString(" / ")
+        return buildList {
+            if (replaceBulwarkWithBoss) add("Bastion")
+            if (commanderSlots.isNotEmpty()) add("${commanderSlots.size} Commander")
+            addAll(groups)
+        }.joinToString(" / ")
     }
 }
