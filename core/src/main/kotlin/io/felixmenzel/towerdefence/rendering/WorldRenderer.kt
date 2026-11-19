@@ -131,7 +131,17 @@ class WorldRenderer(private val fonts: ScreenFonts) : Disposable {
             drawCoverage(simulation, it.x, it.y, it.range, CYAN, if (previewUpgrade) it.nextUpgrade?.range else null)
             if (simulation.gridPlacement) drawTile(it.x.toFloat(), it.y.toFloat(), CYAN)
         }
-        for (tower in simulation.towers) drawTower(tower, simulation, tower === selectedTower)
+        val boosted = simulation.overdriveTowerId
+        for (tower in simulation.towers) {
+            if (tower.id == boosted) {
+                val x = tower.x.toFloat()
+                val y = tower.y.toFloat()
+                val pulse = (simulation.tick % 40L) / 40f
+                ring(x, y, 28f, 2.4f, UPGRADE_COVERAGE, 0.86f)
+                ring(x, y, 28f + 10f * pulse, 1.5f, UPGRADE_COVERAGE, 0.65f * (1f - pulse))
+            }
+            drawTower(tower, simulation, tower === selectedTower)
+        }
         shapes.color = COMMAND_LINK
         for (escort in simulation.enemies) {
             val commander = escort.protectingCommander ?: continue

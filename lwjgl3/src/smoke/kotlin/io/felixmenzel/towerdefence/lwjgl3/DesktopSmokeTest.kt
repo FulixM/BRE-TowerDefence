@@ -234,6 +234,11 @@ object DesktopSmokeTest {
                 }
                 30 -> {
                     check(simulation.tick > 0L && simulation.enemies.isNotEmpty())
+                    click(800f, 40f) // Use the charge on the selected tower.
+                    check(simulation.overdriveTowerId == simulation.towers.last().id)
+                    check(!simulation.canActivateOverdrive)
+                    key(Input.Keys.X)
+                    check(simulation.overdriveTowerId == simulation.towers.last().id)
                     key(Input.Keys.P)
                     frozenTick = simulation.tick
                 }
